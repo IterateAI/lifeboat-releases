@@ -140,7 +140,9 @@ $EDITOR .env          # set LIFEBOAT_ADMIN_PASSWORD at minimum
 docker compose up -d
 ```
 
-Copies of all three compose files are mirrored in [`install/`](install/).
+Copies of all three compose files are mirrored in [`install/`](install/),
+and [`docs/docker.md`](docs/docker.md) has the full detail — tags, host
+requirements, sizing and upgrades.
 
 <details>
 <summary><b>NVIDIA host requirements</b></summary>
