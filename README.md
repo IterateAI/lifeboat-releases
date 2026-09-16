@@ -219,12 +219,15 @@ servers — the console and the API stay reachable either way, so you can always
 activate from the same page that asked you to.
 
 * **Free tier** — for non-commercial and evaluation use. No card. Up to 2
-  concurrent inference servers, single node. Request a key from
-  [iterate.ai/lifeboat](https://iterate.ai/lifeboat).
-* **Paid** — monthly or yearly, from
-  [iterate.ai/lifeboat](https://iterate.ai/lifeboat).
+  concurrent inference servers, single node.
+* **Paid** — monthly or yearly.
 * **Air-gapped** — offline licence files are available; they never contact a
-  licence server.
+  licence server. Install first, read the **Cluster ID** off the License page,
+  and quote it when you ask — the file is bound to that one cluster.
+
+**All of it goes through [iterate.ai/lifeboat](https://iterate.ai/lifeboat)** —
+free tier, trial, purchase, upgrades and offline files. That is the only
+address you need.
 
 ---
 
