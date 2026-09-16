@@ -38,7 +38,7 @@ CPU otherwise.
 | **Linux** any distro, arm64 | `Lifeboat-2.2.40-linux-aarch64.tar.gz` | **available** |
 | **Windows** x64 | `Lifeboat-<ver>-setup.exe` | in progress |
 
-All builds are on the [releases page](../../releases), with SHA-256
+All builds are on the [releases page](../../releases/latest), with SHA-256
 checksums in `SHA256SUMS`.
 
 **Verify what you downloaded.** macOS and Windows builds are code-signed, so
@@ -67,8 +67,9 @@ GNOME, also install `gir1.2-ayatanaappindicator3-0.1` — without an
 AppIndicator it silently does not render. `lifeboat-core` runs headless with
 none of it.
 
-**On macOS**, this build is signed but not yet notarized, so the first launch
-needs **right-click → Open**, once.
+**On macOS**, the build is signed with a Developer ID, **notarized by Apple and
+stapled** — double-click to launch, no security warning, and it works offline
+because the ticket travels with the file.
 
 <details>
 <summary><b>System requirements</b></summary>
