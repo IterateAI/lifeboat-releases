@@ -31,12 +31,12 @@ CPU otherwise.
 
 | Platform | Download |
 |---|---|
-| **macOS** (Apple Silicon) | [Lifeboat-macos-arm64.dmg](../../releases/latest) |
-| **macOS** (Intel) | [Lifeboat-macos-x64.dmg](../../releases/latest) |
-| **Windows** (x64) | [Lifeboat-setup.exe](../../releases/latest) |
-| **Linux** (x64 / arm64) | [.deb and .tar.gz](../../releases/latest) |
+| **macOS** (Apple Silicon) | [Lifeboat-macos-arm64.dmg](../../releases) |
+| **macOS** (Intel) | [Lifeboat-macos-x64.dmg](../../releases) |
+| **Windows** (x64) | [Lifeboat-setup.exe](../../releases) |
+| **Linux** (x64 / arm64) | [.deb and .tar.gz](../../releases) |
 
-All builds are on the [releases page](../../releases/latest), with SHA-256
+All builds are on the [releases page](../../releases), with SHA-256
 checksums in `SHA256SUMS`.
 
 **Verify what you downloaded.** macOS and Windows builds are code-signed, so
@@ -93,7 +93,7 @@ curl -sSL https://license.interplay.iterate.ai/lifeboat/get-lifeboat.sh | bash
 ```
 
 It checks your host, picks the right image for your hardware, writes a `.env`,
-and starts the stack. Then open <http://localhost:30000>.
+and starts the stack. Then open <http://localhost:8001>.
 
 <details>
 <summary><b>Prefer to read the script first?</b> (Sensible — it is piped to a shell)</summary>
@@ -187,7 +187,8 @@ to `lite` for CPU-only nodes.
 
 ## First run
 
-1. Open the console — <http://localhost:30000> (Docker) or the tray's **Open
+1. Open the console — <http://localhost:8001> (Docker) or <http://127.0.0.1:30800>
+   via the tray's **Open
    Console** (desktop).
 2. **Create your administrator account.** Lifeboat ships with no credentials:
    the first visit asks you to choose an email and password, and that account
@@ -196,10 +197,10 @@ to `lite` for CPU-only nodes.
    normally.)
 3. **Models → Add Model**, pick something that fits your machine.
 4. **Servers → New Server**, choose the model, press Start.
-5. Point any OpenAI-compatible client at `http://localhost:30000/v1`.
+5. Point any OpenAI-compatible client at `http://localhost:8001/v1`.
 
 ```sh
-curl http://localhost:30000/v1/chat/completions \
+curl http://localhost:8001/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <your-api-key>' \
   -d '{"model":"<your-model>","messages":[{"role":"user","content":"Hello"}]}'
@@ -217,11 +218,11 @@ deciding anything. After that an activation key is required to start inference
 servers — the console and the API stay reachable either way, so you can always
 activate from the same page that asked you to.
 
-* **Free tier** — for non-commercial and evaluation use, at
-  [`/lifeboat/free`](https://license.interplay.iterate.ai/lifeboat/free). No
-  card. Up to 2 concurrent inference servers, single node.
-* **Paid** — monthly or yearly, at the
-  [customer portal](https://license.interplay.iterate.ai/lifeboat/portal).
+* **Free tier** — for non-commercial and evaluation use. No card. Up to 2
+  concurrent inference servers, single node. Request a key from
+  [iterate.ai/lifeboat](https://iterate.ai/lifeboat).
+* **Paid** — monthly or yearly, from
+  [iterate.ai/lifeboat](https://iterate.ai/lifeboat).
 * **Air-gapped** — offline licence files are available; they never contact a
   licence server.
 
