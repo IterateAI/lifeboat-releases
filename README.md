@@ -136,7 +136,8 @@ architecture, and both images are `linux/amd64`.
 ```sh
 curl -sSLO https://license.interplay.iterate.ai/lifeboat/docker-compose.yaml
 curl -sSL  https://license.interplay.iterate.ai/lifeboat/.env.example -o .env
-$EDITOR .env          # set LIFEBOAT_ADMIN_PASSWORD at minimum
+$EDITOR .env          # optional: LIFEBOAT_ADMIN_PASSWORD, else the
+                      # console asks you to create the account on first visit
 docker compose up -d
 ```
 
@@ -188,8 +189,11 @@ to `lite` for CPU-only nodes.
 
 1. Open the console — <http://localhost:30000> (Docker) or the tray's **Open
    Console** (desktop).
-2. Sign in. Docker: the credentials you set in `.env`. Desktop: the tray's
-   **Copy Console Login** has them.
+2. **Create your administrator account.** Lifeboat ships with no credentials:
+   the first visit asks you to choose an email and password, and that account
+   is the superadmin. (If you set `LIFEBOAT_ADMIN_PASSWORD` in `.env` before
+   the first start, the account is created from that instead and you sign in
+   normally.)
 3. **Models → Add Model**, pick something that fits your machine.
 4. **Servers → New Server**, choose the model, press Start.
 5. Point any OpenAI-compatible client at `http://localhost:30000/v1`.
