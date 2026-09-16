@@ -197,7 +197,7 @@ its first GPU allocation with an error that mentions neither.
 ## Kubernetes
 
 ```sh
-helm repo add lifeboat https://license.interplay.iterate.ai/lifeboat
+helm repo add lifeboat https://raw.githubusercontent.com/IterateAI/lifeboat-releases/main/helm
 helm repo update
 helm install lifeboat lifeboat/lifeboat \
   --set admin.password='<choose-one>' \
