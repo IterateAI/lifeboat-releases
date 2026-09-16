@@ -31,7 +31,8 @@ CPU otherwise.
 
 | Platform | File | Status |
 |---|---|---|
-| **macOS** Apple Silicon (13+) | `Lifeboat-2.2.40-macos-arm64.dmg` | **available** |
+| **macOS** Apple Silicon (13+) | `Lifeboat-2.2.40-macos-arm64.dmg` | **available** — Metal + MLX |
+| **macOS** Intel (13+) | `Lifeboat-2.2.40-macos-x86_64.dmg` | **available** — GGUF only |
 | **Linux** Debian/Ubuntu x64 | `lifeboat-desktop_2.2.40_amd64.deb` | **available** |
 | **Linux** Debian/Ubuntu arm64 | `lifeboat-desktop_2.2.40_arm64.deb` | **available** |
 | **Linux** any distro, x64 | `Lifeboat-2.2.40-linux-x86_64.tar.gz` | **available** |
@@ -113,7 +114,7 @@ only. The desktop app will refuse a safetensors download on macOS or Windows
 The fastest path on a Linux GPU host. One command:
 
 ```sh
-curl -sSL https://license.interplay.iterate.ai/lifeboat/get-lifeboat.sh | bash
+curl -sSL https://raw.githubusercontent.com/IterateAI/lifeboat-releases/main/install/get-lifeboat.sh | bash
 ```
 
 It checks your host, picks the right image for your hardware, writes a `.env`,
@@ -123,14 +124,14 @@ and starts the stack. Then open <http://localhost:8001>.
 <summary><b>Prefer to read the script first?</b> (Sensible — it is piped to a shell)</summary>
 
 ```sh
-curl -sSLO https://license.interplay.iterate.ai/lifeboat/get-lifeboat.sh
+curl -sSLO https://raw.githubusercontent.com/IterateAI/lifeboat-releases/main/install/get-lifeboat.sh
 less get-lifeboat.sh
 bash get-lifeboat.sh
 ```
 
 A copy is mirrored in this repository at [`install/get-lifeboat.sh`](install/get-lifeboat.sh)
 so you can review it with history. The canonical copy is the one served from
-`license.interplay.iterate.ai`.
+this repository.
 
 </details>
 
@@ -158,8 +159,8 @@ architecture, and both images are `linux/amd64`.
 ### Manual Compose
 
 ```sh
-curl -sSLO https://license.interplay.iterate.ai/lifeboat/docker-compose.yaml
-curl -sSL  https://license.interplay.iterate.ai/lifeboat/.env.example -o .env
+curl -sSLO https://raw.githubusercontent.com/IterateAI/lifeboat-releases/main/install/docker-compose.yaml
+curl -sSL  https://raw.githubusercontent.com/IterateAI/lifeboat-releases/main/install/.env.example -o .env
 $EDITOR .env          # optional: LIFEBOAT_ADMIN_PASSWORD, else the
                       # console asks you to create the account on first visit
 docker compose up -d
