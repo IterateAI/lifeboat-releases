@@ -29,23 +29,46 @@ A signed native app with a tray icon. It serves models on whatever the machine
 has: Metal on Apple Silicon, CUDA on NVIDIA, Vulkan on AMD and Intel, and the
 CPU otherwise.
 
-| Platform | Download |
-|---|---|
-| **macOS** (Apple Silicon) | [Lifeboat-macos-arm64.dmg](../../releases) |
-| **macOS** (Intel) | [Lifeboat-macos-x64.dmg](../../releases) |
-| **Windows** (x64) | [Lifeboat-setup.exe](../../releases) |
-| **Linux** (x64 / arm64) | [.deb and .tar.gz](../../releases) |
+| Platform | File | Status |
+|---|---|---|
+| **macOS** Apple Silicon (13+) | `Lifeboat-2.2.40-macos-arm64.dmg` | **available** |
+| **Linux** Debian/Ubuntu x64 | `lifeboat-desktop_2.2.40_amd64.deb` | **available** |
+| **Linux** Debian/Ubuntu arm64 | `lifeboat-desktop_2.2.40_arm64.deb` | **available** |
+| **Linux** any distro, x64 | `Lifeboat-2.2.40-linux-x86_64.tar.gz` | **available** |
+| **Linux** any distro, arm64 | `Lifeboat-2.2.40-linux-aarch64.tar.gz` | **available** |
+| **Windows** x64 | `Lifeboat-<ver>-setup.exe` | in progress |
 
 All builds are on the [releases page](../../releases), with SHA-256
 checksums in `SHA256SUMS`.
 
 **Verify what you downloaded.** macOS and Windows builds are code-signed, so
-the OS checks them for you. On Linux, check the signature yourself:
+the OS checks them for you. On Linux, check the checksum yourself:
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
-gpg --verify lifeboat-desktop_*.deb.asc            # key: see SECURITY.md
 ```
+
+**Installing on Linux** — Debian and Ubuntu:
+
+```sh
+sudo dpkg -i lifeboat-desktop_2.2.40_amd64.deb
+```
+
+Any other distro — the tarball unpacks to the same layout, rooted at `/`:
+
+```sh
+sudo tar -C / -xzf Lifeboat-2.2.40-linux-x86_64.tar.gz
+```
+
+Either way you get `/opt/lifeboat` plus two commands on `PATH`:
+**`lifeboat-core`** (the server and CLI) and **`lifeboat-tray`**. Needs
+**glibc 2.31+** (Debian 11+, Ubuntu 20.04+, RHEL 9+). For the tray icon on
+GNOME, also install `gir1.2-ayatanaappindicator3-0.1` — without an
+AppIndicator it silently does not render. `lifeboat-core` runs headless with
+none of it.
+
+**On macOS**, this build is signed but not yet notarized, so the first launch
+needs **right-click → Open**, once.
 
 <details>
 <summary><b>System requirements</b></summary>
