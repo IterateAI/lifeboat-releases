@@ -1,0 +1,9 @@
+# This repository carries install files and release metadata only.
+# Binaries live on the Releases page: GitHub rejects any file over 100 MiB and
+# the desktop builds are ~200 MB, so committing one would fail the push AFTER
+# the commit and leave a branch that can never be pushed.
+*.dmg
+*.exe
+*.deb
+*.tar.gz
+*.zip

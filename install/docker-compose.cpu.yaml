@@ -1,0 +1,299 @@
+# ============================================================
+# Lifeboat Lite — CPU, integrated GPUs, and edge hardware
+# ============================================================
+#
+#   docker compose -f docker-compose.cpu.yaml up -d
+#
+# Shares the same `.env` as the accelerator compose files.
+#
+# WHAT THIS IS FOR
+# ----------------
+# Hosts the accelerator images cannot serve: no discrete GPU, or 8 GB of RAM,
+# or 8 GB of storage, or a dual-core fanless box. The image is ~250 MB against
+# 26-28 GB, because the control plane needs no torch and no vendor runtime —
+# its entire module-scope dependency set is five Python packages and every
+# heavy import is lazy and guarded.
+#
+# One image covers CPU-only hosts AND any Vulkan-capable GPU (Intel iGPU via
+# ANV, AMD integrated or discrete via RADV, older NVIDIA), because the GGUF
+# engine is built with runtime CPU-ISA dispatch plus a Vulkan backend rather
+# than compiled for one target. See Dockerfile.cpu's header.
+#
+# WHAT YOU GIVE UP — this is the trade, not a footnote
+# ----------------------------------------------------
+# None of the `lifeboat_*` optimizations. They hook the tensor engine's
+# scheduler, so they are unavailable on the GGUF engine on ANY hardware.
+# `GET /api/hardware/profile` reports exactly that, with the engine's own
+# equivalents named. Everything above the engine works unchanged: the load
+# balancer and all four routing modes, the capacity gate and queue, sticky
+# sessions, the full OpenAI + Anthropic /v1/* surface, the model registry and
+# GGUF variant picker, licensing, audit, and the UI.
+#
+# ENABLING GPU OFFLOAD (optional)
+# -------------------------------
+# The default passes NO GPU device, because Docker REFUSES to start a
+# container whose `devices:` entry is absent on the host — so a hardcoded
+# /dev/dri would break every genuinely CPU-only box. To use a laptop or
+# integrated GPU through Vulkan, set in `.env`:
+#
+#     LIFEBOAT_GPU_DEVICE=/dev/dri:/dev/dri
+#
+# then check it landed:
+#
+#     docker compose -f docker-compose.cpu.yaml exec lifeboat \
+#         curl -s localhost:8001/api/hardware/profile
+#
+# SIZING — read this before choosing a model
+# ------------------------------------------
+# Decode is memory-bandwidth bound, so throughput is roughly
+# bandwidth / bytes-per-token and no setting here changes it. On an 8 GB host
+# the practical ceiling is an 8B model at 4-bit with a short context; 14B at
+# 4-bit is ~8.1 GB of weights alone and does NOT fit alongside an OS. 1.7B-4B
+# is the comfortable range. `GET /api/hardware/profile` computes the budget for
+# the actual host, including any cgroup limit set below.
+#
+# Expect time-to-first-token, not decode, to dominate the experience on a weak
+# CPU: prefill is the compute-bound half.
+# ============================================================
+
+services:
+  lifeboat:
+    # A Lite-specific tag. `:latest` is the CUDA multi-arch image and carries
+    # the full accelerator stack — build.sh --lite deliberately never publishes
+    # to it, because an OCI manifest list selects on os/arch only and Lite
+    # would REPLACE the accelerator image for matching-arch customers.
+    image: iterateai/lifeboat:${LIFEBOAT_LITE_IMAGE_TAG:-lite}
+    container_name: ${CONTAINER_NAME:-lifeboat-lite}
+    restart: ${RESTART_POLICY:-always}
+
+    # Run as the in-image owner from PID 1, so `cap_drop: ALL` (which strips
+    # CAP_DAC_OVERRIDE) cannot turn into "Permission denied" on exec. Same
+    # reasoning as the other two files; see the chmod 0755 note in the
+    # Dockerfiles for the failure this avoids.
+    user: "lifeboat:lifeboat"
+
+    # ---- Optional GPU passthrough (Vulkan) ----
+    # Defaults to a /dev/null self-mapping, which is a genuine no-op and always
+    # startable. This pattern is load-bearing: Docker refuses to start a
+    # container whose devices: entry does not exist on the host, so naming
+    # /dev/dri unconditionally would break every CPU-only deployment. Same
+    # trick the confidential-computing guest device uses, for the same reason.
+    devices:
+      - ${LIFEBOAT_GPU_DEVICE:-/dev/null:/dev/null}
+
+    # Host GIDs for these differ across distributions, hence names not numbers.
+    # Only consulted when a real /dev/dri is passed above; harmless otherwise.
+    # If the profile endpoint reports no GPU while the host sees one, this is
+    # the first thing to check.
+    group_add:
+      - video
+      - render
+
+    ports:
+      - "${LIFEBOAT_CONTROL_PORT:-8001}:8001"
+
+    volumes:
+      # MUST mount at /opt/lifeboat/.lifeboat — login + audit break elsewhere.
+      - lifeboat-data:/opt/lifeboat/.lifeboat
+      - ${MODELS_DIR:-./models}:/models
+      - ${ADMIN_PASS_FILE:-/dev/null}:/run/secrets/admin-pass:ro
+      - ${CLUSTER_SECRET_FILE:-/dev/null}:/run/secrets/cluster-secret:ro
+      - ${TLS_CERT_DIR:-/dev/null}:/certs:ro
+
+    environment:
+      # ---- Accelerator ----------------------------------------------
+      # Deliberately NOT pinned, unlike the ROCm file. Lite is the one image
+      # that legitimately runs on several accelerator situations — CPU-only, an
+      # Intel iGPU, an AMD iGPU — and detection is what picks between them.
+      # Pin it only to force a diagnosis on a box you believe is misdetected.
+      LIFEBOAT_GPU_VENDOR: "${LIFEBOAT_GPU_VENDOR:-}"
+
+      # ---- Admin bootstrap (required on first start) ----------------
+      LIFEBOAT_ADMIN_EMAIL: "${LIFEBOAT_ADMIN_EMAIL:-admin@iterate.ai}"
+      LIFEBOAT_ADMIN_PASSWORD_FILE: "${ADMIN_PASS_FILE:+/run/secrets/admin-pass}"
+      LIFEBOAT_ADMIN_PASSWORD: "${LIFEBOAT_ADMIN_PASSWORD:-}"
+      LIFEBOAT_CLUSTER_SECRET_FILE: "${CLUSTER_SECRET_FILE:+/run/secrets/cluster-secret}"
+      LIFEBOAT_CLUSTER_SECRET: "${LIFEBOAT_CLUSTER_SECRET:-}"
+
+      # ---- Ports / paths --------------------------------------------
+      LIFEBOAT_AGENT_PORT: "${LIFEBOAT_AGENT_PORT:-8002}"
+      LIFEBOAT_CONTROL_PORT: "${LIFEBOAT_CONTROL_PORT:-8001}"
+      LIFEBOAT_DATA_DIR: "${LIFEBOAT_DATA_DIR:-/opt/lifeboat/.lifeboat}"
+      LIFEBOAT_MODELS_DIR: "${LIFEBOAT_MODELS_DIR:-/models}"
+      LIFEBOAT_MODEL_DOWNLOAD_DIR: "${LIFEBOAT_MODEL_DOWNLOAD_DIR:-/models}"
+      LIFEBOAT_LOG_LEVEL: "${LIFEBOAT_LOG_LEVEL:-INFO}"
+
+      # ---- GGUF engine ----------------------------------------------
+      # NGL is left BLANK on purpose. server_manager derives it from whether an
+      # accelerator is actually visible: 99 to offload everything to a GPU, 0
+      # on a CPU-only host. Hardcoding 99 here would put GPU language in the
+      # log of a CPU-only server; hardcoding 0 would silently forfeit a
+      # laptop GPU that was correctly passed through above.
+      LIFEBOAT_LLAMACPP_NGL: "${LIFEBOAT_LLAMACPP_NGL:-}"
+      # Also blank by default: hardware_profile derives PHYSICAL cores and
+      # honours the cgroup CPU quota, which the engine's own default does not
+      # (it sees the host's core count and would oversubscribe a --cpus 2
+      # container by the host's core ratio).
+      LIFEBOAT_LLAMACPP_THREADS: "${LIFEBOAT_LLAMACPP_THREADS:-}"
+      # Quantized K cache. Blank = auto (q8_0 on memory-constrained tiers).
+      # Only K by default: a quantized V cache needs flash-attention active in
+      # the build, and if it is off the launch FAILS rather than degrades.
+      LIFEBOAT_LLAMACPP_CACHE_TYPE_K: "${LIFEBOAT_LLAMACPP_CACHE_TYPE_K:-}"
+      LIFEBOAT_LLAMACPP_CACHE_TYPE_V: "${LIFEBOAT_LLAMACPP_CACHE_TYPE_V:-}"
+      # Slot count. Keep this and a server's max_concurrency in step, or the
+      # surplus queues INSIDE the engine where the load balancer cannot see it
+      # and X-Lifeboat-Wait-ms reads 0.
+      LIFEBOAT_LLAMACPP_PARALLEL: "${LIFEBOAT_LLAMACPP_PARALLEL:-}"
+      # Per-request context window (NOT the total). The engine's --ctx-size is
+      # derived as this x slots. 4096 rather than the 32768 default: on an 8 GB
+      # host the KV cache competes with the weights and the OS for one pool.
+      LIFEBOAT_LLAMACPP_CTX_DEFAULT: "${LIFEBOAT_LLAMACPP_CTX_DEFAULT:-4096}"
+      LIFEBOAT_LLAMACPP_EXTRA_ARGS: "${LIFEBOAT_LLAMACPP_EXTRA_ARGS:-}"
+      LIFEBOAT_LLAMACPP_POOLING: "${LIFEBOAT_LLAMACPP_POOLING:-}"
+
+      # ---- Memory budget --------------------------------------------
+      # Held back from the model budget for the OS, page cache and the control
+      # plane. An appliance image with no desktop can lower the first; a
+      # general-purpose host that also runs other services should raise it.
+      LIFEBOAT_HOST_RESERVE_GB: "${LIFEBOAT_HOST_RESERVE_GB:-1.6}"
+      LIFEBOAT_CP_RESERVE_GB: "${LIFEBOAT_CP_RESERVE_GB:-0.35}"
+
+      # ---- Load balancer --------------------------------------------
+      LIFEBOAT_LB_SUPERFAST_CAP: "${LIFEBOAT_LB_SUPERFAST_CAP:-4}"
+      LIFEBOAT_LB_QUEUE_ENABLED: "${LIFEBOAT_LB_QUEUE_ENABLED:-true}"
+      LIFEBOAT_LB_QUEUE_TTL_SEC: "${LIFEBOAT_LB_QUEUE_TTL_SEC:-120}"
+      LIFEBOAT_LB_QUEUE_MAX_DEPTH_MULTIPLIER: "${LIFEBOAT_LB_QUEUE_MAX_DEPTH_MULTIPLIER:-4}"
+      LIFEBOAT_LB_QUEUE_DEADLINE_BOOST_SEC: "${LIFEBOAT_LB_QUEUE_DEADLINE_BOOST_SEC:-10}"
+      LIFEBOAT_LB_POOL_LRU_TTL_SEC: "${LIFEBOAT_LB_POOL_LRU_TTL_SEC:-300}"
+      LIFEBOAT_LB_IMAGE_TOKENS: "${LIFEBOAT_LB_IMAGE_TOKENS:-2048}"
+      LIFEBOAT_LB_AUDIO_BYTES_PER_TOKEN: "${LIFEBOAT_LB_AUDIO_BYTES_PER_TOKEN:-640}"
+      LIFEBOAT_LB_REAPER_INTERVAL_SEC: "${LIFEBOAT_LB_REAPER_INTERVAL_SEC:-60}"
+      # The queue defaults to ON here where the accelerator files default it
+      # off, and the TTL is longer. On a box that serves a handful of tokens a
+      # second, a 503 on the second concurrent request is a worse answer than
+      # a wait: the request WILL be served, just not immediately.
+
+      # ---- TTS ------------------------------------------------------
+      # 1, not the usual 2. llama-tts is a one-shot CLI that reloads the model
+      # on EVERY request, so each concurrent invocation is another full copy of
+      # the weights in RSS — measured at 4.2 GB each on a GB10. On an 8 GB host
+      # two at once is the OOM killer.
+      LIFEBOAT_TTS_MAX_CONCURRENCY: "${LIFEBOAT_TTS_MAX_CONCURRENCY:-1}"
+
+      # ---- Server lifecycle -----------------------------------------
+      LIFEBOAT_MAX_AUTO_RESTARTS: "${LIFEBOAT_MAX_AUTO_RESTARTS:-5}"
+      LIFEBOAT_RESTART_COOLDOWN: "${LIFEBOAT_RESTART_COOLDOWN:-60}"
+      # Shorter than the accelerator files' 900/300. The GGUF engine has no
+      # CUDA-graph capture phase to sit through — it loads weights and serves —
+      # so a start that takes minutes here is genuinely wedged rather than
+      # working. Still gated on BOTH a timeout AND log silence, so a slow disk
+      # loading a large GGUF is not mistaken for a hang.
+      LIFEBOAT_STARTING_TIMEOUT_SEC: "${LIFEBOAT_STARTING_TIMEOUT_SEC:-300}"
+      LIFEBOAT_STARTING_STALL_SEC: "${LIFEBOAT_STARTING_STALL_SEC:-120}"
+      LIFEBOAT_STARTING_HARD_TIMEOUT_SEC: "${LIFEBOAT_STARTING_HARD_TIMEOUT_SEC:-1200}"
+      LIFEBOAT_STOP_GRACE_SEC: "${LIFEBOAT_STOP_GRACE_SEC:-30}"
+      LIFEBOAT_UNHEALTHY_GRACE_SEC: "${LIFEBOAT_UNHEALTHY_GRACE_SEC:-120}"
+      LIFEBOAT_ZOMBIE_REAP_INTERVAL: "${LIFEBOAT_ZOMBIE_REAP_INTERVAL:-30}"
+      LIFEBOAT_WATCHDOG_STARTUP_GRACE: "${LIFEBOAT_WATCHDOG_STARTUP_GRACE:-120}"
+      LIFEBOAT_AUTOSTART_SEQUENTIAL: "${LIFEBOAT_AUTOSTART_SEQUENTIAL:-true}"
+      LIFEBOAT_AUTOSTART_READY_TIMEOUT_SEC: "${LIFEBOAT_AUTOSTART_READY_TIMEOUT_SEC:-300}"
+
+      # ---- Proxy / warmup -------------------------------------------
+      LIFEBOAT_PROXY_CACHE_TTL: "${LIFEBOAT_PROXY_CACHE_TTL:-30}"
+      # Far lower than the accelerator default of 200. Each connection costs
+      # memory, and a box serving single-digit tokens per second cannot use
+      # 200 of them; the LB queue is the right place for the surplus.
+      LIFEBOAT_PROXY_MAX_CONNECTIONS: "${LIFEBOAT_PROXY_MAX_CONNECTIONS:-32}"
+      LIFEBOAT_PROXY_MAX_KEEPALIVE: "${LIFEBOAT_PROXY_MAX_KEEPALIVE:-8}"
+      LIFEBOAT_WARMUP_ON_START: "${LIFEBOAT_WARMUP_ON_START:-true}"
+      LIFEBOAT_WARMUP_TIMEOUT_SEC: "${LIFEBOAT_WARMUP_TIMEOUT_SEC:-180}"
+      LIFEBOAT_WARMUP_REQUEST_TIMEOUT_SEC: "${LIFEBOAT_WARMUP_REQUEST_TIMEOUT_SEC:-120}"
+      LIFEBOAT_DIAGNOSTICS_TIMEOUT_SEC: "${LIFEBOAT_DIAGNOSTICS_TIMEOUT_SEC:-120}"
+
+      # ---- Licensing ------------------------------------------------
+      LIFEBOAT_LICENSE_SERVER_URL: "${LIFEBOAT_LICENSE_SERVER_URL:-https://license.interplay.iterate.ai}"
+      LIFEBOAT_GRACE_HOURS: "${LIFEBOAT_GRACE_HOURS:-24}"
+      LIFEBOAT_HEARTBEAT_INTERVAL_HOURS: "${LIFEBOAT_HEARTBEAT_INTERVAL_HOURS:-6}"
+      LIFEBOAT_TELEMETRY: "${LIFEBOAT_TELEMETRY:-on}"
+      LIFEBOAT_CENSUS_INTERVAL_HOURS: "${LIFEBOAT_CENSUS_INTERVAL_HOURS:-24}"
+      LIFEBOAT_PORTAL_URL: "${LIFEBOAT_PORTAL_URL:-}"
+      LIFEBOAT_LICENSE_FILE: "${LIFEBOAT_LICENSE_FILE:-}"
+
+      # ---- Caches ---------------------------------------------------
+      HF_HOME: "${HF_HOME:-/opt/lifeboat/.lifeboat/hf_cache}"
+      XDG_CACHE_HOME: "${XDG_CACHE_HOME:-/opt/lifeboat/.lifeboat/.cache}"
+      TMPDIR: "${LIFEBOAT_JIT_TMPDIR:-/opt/lifeboat/.lifeboat/tmp}"
+      HF_XET_HIGH_PERFORMANCE: "${HF_XET_HIGH_PERFORMANCE:-1}"
+
+      # ---- Deliberately ABSENT --------------------------------------
+      # Not omissions. Each of these configures something this image does not
+      # contain, and setting it would advertise a capability that is not here:
+      #   LIFEBOAT_CONFIDENTIAL_COMPUTING and the LIFEBOAT_CC_* family — CC
+      #     needs an NVIDIA CC-mode GPU inside a CVM. `require` on a host that
+      #     can never attest turns every server start into a permanent 403.
+      #   LIFEBOAT_AUTO_MEM_PEER_GB / _MAX_FRACTION — the auto mem-fraction
+      #     work sizes the tensor engine's pre-allocated KV pool. The GGUF
+      #     engine offloads by layer count and has no such pool.
+      #   PYTORCH_ALLOC_CONF, FLASHINFER_*, HSA_OVERRIDE_GFX_VERSION — no
+      #     torch, no flashinfer, no ROCm in this image.
+
+    security_opt:
+      - no-new-privileges:true
+      # NOTE there is no `seccomp:unconfined` here, and that is a real
+      # difference from the ROCm file rather than an oversight: that
+      # requirement comes from ROCm's userspace DMA ioctls through /dev/kfd.
+      # Vulkan through /dev/dri needs no seccomp relaxation, so Lite keeps the
+      # default profile — a stronger posture than the AMD image can have.
+
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+
+    read_only: true
+    tmpfs:
+      # Smaller than the accelerator default of 512M: nothing JIT-compiles in
+      # this image (no triton, no flashinfer, no HIP), so /tmp holds only the
+      # per-port engine logs and the CC key-file path that is never used here.
+      - /tmp:size=${LIFEBOAT_TMP_SIZE:-128M}
+      - /run:size=10M
+
+    # No `ipc: host` and no shm_size. Host IPC is a ROCm requirement, and
+    # shared memory is only needed for the tensor engine's tp>1 NCCL/RCCL
+    # transport — the GGUF engine is a single process and splits layers
+    # internally, so neither applies.
+
+    # ---- Resource limits ----
+    # Commented out because a limit that is too low is a confusing OOM rather
+    # than a clear error, so it must be a deliberate choice. When you do set
+    # one, note that hardware_profile READS the cgroup limit and sizes the
+    # model budget and the engine's thread count from it — so a limit here is
+    # not merely a ceiling, it correctly shrinks every derived recommendation.
+    # That is the one case where an explicit limit is better than none: it
+    # makes the profile tell the truth about a container's real budget rather
+    # than the host's.
+    #
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 7G
+    #       cpus: "4"
+
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8001/api/version"]
+      interval: 30s
+      timeout: 5s
+      # Shorter than the accelerator files' 90s: there is no vendor runtime to
+      # initialise and no kernel cache to warm.
+      start_period: 30s
+      retries: 3
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "${LOG_MAX_SIZE:-20m}"
+        max-file: "${LOG_MAX_FILES:-3}"
+
+volumes:
+  lifeboat-data:
+    driver: local

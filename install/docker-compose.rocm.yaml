@@ -1,0 +1,255 @@
+# ============================================================
+# Lifeboat — AMD ROCm deployment (docker compose)
+# by iterate.ai
+#
+#   docker compose -f docker-compose.rocm.yaml up -d
+#
+# This is the AMD sibling of ./docker-compose.yaml and reads the SAME .env.
+# Only the accelerator wiring differs; every LIFEBOAT_* knob, the volume
+# layout, the hardening posture and the healthcheck are identical, so an
+# operator moving between an NVIDIA and an AMD host changes the file they
+# point at and nothing else.
+#
+# HOW GPU ACCESS DIFFERS FROM THE NVIDIA FILE — the whole point of this file
+# ------------------------------------------------------------------------
+# There is no `--gpus all`, no CDI device request and no container toolkit on
+# ROCm. The GPU is reached through two ordinary device nodes:
+#
+#   /dev/kfd            the ROCm compute device (one node for the whole system)
+#   /dev/dri/renderD*   the per-GPU render node
+#
+# Consequences worth knowing before you debug a "no GPU found":
+#
+#   * There is no `host-setup` service here. The NVIDIA file runs one to
+#     generate a CDI spec with nvidia-ctk; ROCm needs no host-side generation
+#     step at all, which removes a whole class of first-boot failure.
+#   * The container user must be able to OPEN those nodes. The entrypoint
+#     drops privileges to `lifeboat`, so it is that user — not root — whose
+#     group membership matters. The image adds it to video+render, and
+#     `group_add` below re-asserts them because host GIDs vary between
+#     distributions (Ubuntu and RHEL disagree about `render`).
+#   * `seccomp=unconfined` is required by ROCm's use of userspace DMA ioctls.
+#     This is the one place the AMD posture is weaker than the NVIDIA one, and
+#     it is ROCm's documented requirement rather than a Lifeboat choice.
+#   * No flashinfer cubin volume. flashinfer is CUDA-only, so the named volume
+#     the NVIDIA file mounts over site-packages/flashinfer_cubin has nothing
+#     to overlay here. triton JIT output goes to TRITON_CACHE_DIR inside the
+#     persistent data volume, same as on NVIDIA.
+#
+# Verify the GPU is actually visible to the container, before blaming Lifeboat:
+#   docker compose -f docker-compose.rocm.yaml exec lifeboat rocm-smi
+# ============================================================
+
+services:
+  lifeboat:
+    # NOTE: a ROCm-specific tag. `:latest` is the CUDA multi-arch image and
+    # will not run on an AMD GPU — build.sh --rocm deliberately never
+    # publishes to it.
+    image: iterateai/lifeboat:${LIFEBOAT_ROCM_IMAGE_TAG:-amd}
+    container_name: ${CONTAINER_NAME:-lifeboat}
+    restart: ${RESTART_POLICY:-always}
+
+    # Same reasoning as the NVIDIA file: run as the in-image owner from PID 1
+    # so `cap_drop: ALL` (which strips CAP_DAC_OVERRIDE) cannot turn into
+    # "Permission denied" on exec.
+    user: "lifeboat:lifeboat"
+
+    # ---- ROCm device passthrough ----
+    devices:
+      - /dev/kfd:/dev/kfd
+      # Passing the whole /dev/dri exposes every GPU. To pin a single card,
+      # replace with its render node, e.g.
+      #   - /dev/dri/renderD128:/dev/dri/renderD128
+      - /dev/dri:/dev/dri
+
+    # Host GIDs for these differ across distributions, so they are named
+    # rather than numeric. If `rocm-smi` inside the container reports no
+    # devices while the host sees them, this is the first thing to check.
+    group_add:
+      - video
+      - render
+
+    ports:
+      - "${LIFEBOAT_CONTROL_PORT:-8001}:8001"
+      # - "${LIFEBOAT_AGENT_PORT:-8002}:8002"
+
+    volumes:
+      # MUST mount at /opt/lifeboat/.lifeboat — login + audit break elsewhere.
+      - lifeboat-data:/opt/lifeboat/.lifeboat
+      - ${MODELS_DIR:-./models}:/models
+      - ${ADMIN_PASS_FILE:-/dev/null}:/run/secrets/admin-pass:ro
+      - ${CLUSTER_SECRET_FILE:-/dev/null}:/run/secrets/cluster-secret:ro
+      - ${TLS_CERT_DIR:-/dev/null}:/certs:ro
+
+    environment:
+      # ---- Accelerator ----------------------------------------------
+      # Pins the vendor instead of relying on detection. Detection works
+      # (gpu_probe keys on /dev/kfd), but pinning makes a misconfigured
+      # `devices:` fail loudly as "AMD GPU expected, none visible" rather
+      # than silently reporting a CPU-only host.
+      LIFEBOAT_GPU_VENDOR: "${LIFEBOAT_GPU_VENDOR:-amd}"
+      # Optional: force a gfx target when ROCm misidentifies a part. Leave
+      # blank unless AMD support tells you otherwise — an override that does
+      # not match the silicon produces wrong kernels, not a clear error.
+      HSA_OVERRIDE_GFX_VERSION: "${HSA_OVERRIDE_GFX_VERSION:-}"
+
+      # ---- Admin bootstrap (required on first start) ----------------
+      LIFEBOAT_ADMIN_EMAIL: "${LIFEBOAT_ADMIN_EMAIL:-admin@iterate.ai}"
+      LIFEBOAT_ADMIN_PASSWORD_FILE: "${ADMIN_PASS_FILE:+/run/secrets/admin-pass}"
+      LIFEBOAT_ADMIN_PASSWORD: "${LIFEBOAT_ADMIN_PASSWORD:-}"
+      LIFEBOAT_CLUSTER_SECRET_FILE: "${CLUSTER_SECRET_FILE:+/run/secrets/cluster-secret}"
+      LIFEBOAT_CLUSTER_SECRET: "${LIFEBOAT_CLUSTER_SECRET:-}"
+
+      # ---- Ports / paths --------------------------------------------
+      LIFEBOAT_AGENT_PORT: "${LIFEBOAT_AGENT_PORT:-8002}"
+      LIFEBOAT_CONTROL_PORT: "${LIFEBOAT_CONTROL_PORT:-8001}"
+      LIFEBOAT_DATA_DIR: "${LIFEBOAT_DATA_DIR:-/opt/lifeboat/.lifeboat}"
+      LIFEBOAT_MODELS_DIR: "${LIFEBOAT_MODELS_DIR:-/models}"
+      LIFEBOAT_MODEL_DOWNLOAD_DIR: "${LIFEBOAT_MODEL_DOWNLOAD_DIR:-/models}"
+
+      # ---- Server lifecycle -----------------------------------------
+      LIFEBOAT_MAX_AUTO_RESTARTS: "${LIFEBOAT_MAX_AUTO_RESTARTS:-5}"
+      LIFEBOAT_RESTART_COOLDOWN: "${LIFEBOAT_RESTART_COOLDOWN:-60}"
+      LIFEBOAT_STARTING_TIMEOUT_SEC: "${LIFEBOAT_STARTING_TIMEOUT_SEC:-900}"
+      LIFEBOAT_STARTING_STALL_SEC: "${LIFEBOAT_STARTING_STALL_SEC:-300}"
+      LIFEBOAT_STARTING_HARD_TIMEOUT_SEC: "${LIFEBOAT_STARTING_HARD_TIMEOUT_SEC:-3600}"
+      LIFEBOAT_STOP_GRACE_SEC: "${LIFEBOAT_STOP_GRACE_SEC:-30}"
+      LIFEBOAT_UNHEALTHY_GRACE_SEC: "${LIFEBOAT_UNHEALTHY_GRACE_SEC:-120}"
+      LIFEBOAT_ZOMBIE_REAP_INTERVAL: "${LIFEBOAT_ZOMBIE_REAP_INTERVAL:-30}"
+      LIFEBOAT_WATCHDOG_STARTUP_GRACE: "${LIFEBOAT_WATCHDOG_STARTUP_GRACE:-180}"
+      LIFEBOAT_AUTOSTART_SEQUENTIAL: "${LIFEBOAT_AUTOSTART_SEQUENTIAL:-true}"
+      LIFEBOAT_AUTOSTART_READY_TIMEOUT_SEC: "${LIFEBOAT_AUTOSTART_READY_TIMEOUT_SEC:-600}"
+
+      # ---- Load balancer --------------------------------------------
+      LIFEBOAT_LB_SUPERFAST_CAP: "${LIFEBOAT_LB_SUPERFAST_CAP:-4}"
+      LIFEBOAT_LB_HYBRID_INFLIGHT: "${LIFEBOAT_LB_HYBRID_INFLIGHT:-10}"
+      LIFEBOAT_LB_HYBRID_RATE: "${LIFEBOAT_LB_HYBRID_RATE:-10.0}"
+      LIFEBOAT_LB_HYBRID_WINDOW_SEC: "${LIFEBOAT_LB_HYBRID_WINDOW_SEC:-5.0}"
+      LIFEBOAT_LB_HYBRID_HOT_EXIT_RATIO: "${LIFEBOAT_LB_HYBRID_HOT_EXIT_RATIO:-0.8}"
+      LIFEBOAT_LB_QUEUE_ALL_DEPTH_MULTIPLIER: "${LIFEBOAT_LB_QUEUE_ALL_DEPTH_MULTIPLIER:-1000}"
+      LIFEBOAT_LB_QUEUE_ALL_TTL_SEC: "${LIFEBOAT_LB_QUEUE_ALL_TTL_SEC:-600}"
+      LIFEBOAT_LB_QUEUE_ENABLED: "${LIFEBOAT_LB_QUEUE_ENABLED:-false}"
+      LIFEBOAT_LB_QUEUE_TTL_SEC: "${LIFEBOAT_LB_QUEUE_TTL_SEC:-30}"
+      LIFEBOAT_LB_QUEUE_MAX_DEPTH_MULTIPLIER: "${LIFEBOAT_LB_QUEUE_MAX_DEPTH_MULTIPLIER:-4}"
+      LIFEBOAT_LB_QUEUE_DEADLINE_BOOST_SEC: "${LIFEBOAT_LB_QUEUE_DEADLINE_BOOST_SEC:-10}"
+      LIFEBOAT_LB_POOL_LRU_TTL_SEC: "${LIFEBOAT_LB_POOL_LRU_TTL_SEC:-300}"
+      LIFEBOAT_LB_IMAGE_TOKENS: "${LIFEBOAT_LB_IMAGE_TOKENS:-2048}"
+      LIFEBOAT_LB_AUDIO_BYTES_PER_TOKEN: "${LIFEBOAT_LB_AUDIO_BYTES_PER_TOKEN:-640}"
+      LIFEBOAT_LB_REAPER_INTERVAL_SEC: "${LIFEBOAT_LB_REAPER_INTERVAL_SEC:-60}"
+      LIFEBOAT_TTS_MAX_CONCURRENCY: "${LIFEBOAT_TTS_MAX_CONCURRENCY:-2}"
+
+      # ---- Auto mem-fraction ----------------------------------------
+      LIFEBOAT_AUTO_MEM_PEER_GB: "${LIFEBOAT_AUTO_MEM_PEER_GB:-8}"
+      LIFEBOAT_AUTO_MEM_PEER_MAX_FRACTION: "${LIFEBOAT_AUTO_MEM_PEER_MAX_FRACTION:-0.4}"
+
+      # ---- Proxy / warmup -------------------------------------------
+      LIFEBOAT_PROXY_CACHE_TTL: "${LIFEBOAT_PROXY_CACHE_TTL:-30}"
+      LIFEBOAT_PROXY_MAX_CONNECTIONS: "${LIFEBOAT_PROXY_MAX_CONNECTIONS:-200}"
+      LIFEBOAT_PROXY_MAX_KEEPALIVE: "${LIFEBOAT_PROXY_MAX_KEEPALIVE:-50}"
+      LIFEBOAT_WARMUP_ON_START: "${LIFEBOAT_WARMUP_ON_START:-true}"
+      LIFEBOAT_WARMUP_TIMEOUT_SEC: "${LIFEBOAT_WARMUP_TIMEOUT_SEC:-300}"
+      LIFEBOAT_WARMUP_REQUEST_TIMEOUT_SEC: "${LIFEBOAT_WARMUP_REQUEST_TIMEOUT_SEC:-120}"
+      LIFEBOAT_DIAGNOSTICS_TIMEOUT_SEC: "${LIFEBOAT_DIAGNOSTICS_TIMEOUT_SEC:-120}"
+
+      # ---- Secondary GGUF engine (built with GGML_HIP) ---------------
+      LIFEBOAT_LLAMACPP_NGL: "${LIFEBOAT_LLAMACPP_NGL:-99}"
+      LIFEBOAT_LLAMACPP_PARALLEL: "${LIFEBOAT_LLAMACPP_PARALLEL:-}"
+      LIFEBOAT_LLAMACPP_EXTRA_ARGS: "${LIFEBOAT_LLAMACPP_EXTRA_ARGS:-}"
+      LIFEBOAT_LLAMACPP_POOLING: "${LIFEBOAT_LLAMACPP_POOLING:-}"
+
+      # ---- Confidential computing ------------------------------------
+      # Left at `auto`, which on AMD GPUs reports `unsupported` and never
+      # gates a server start. GPU confidential computing needs an NVIDIA
+      # CC-mode GPU (H100/H200/B200 or an RTX PRO 6000 Blackwell SERVER
+      # edition) inside a CVM; the CPU half (SEV-SNP) being AMD is not
+      # sufficient on its own. Do NOT set `require` here — it would refuse
+      # every launch on a host that can never attest.
+      # ---- Licensing ----------------------------------------------------
+      # These were documented in .env.example and at the top of this file but
+      # were NOT forwarded to the container on this path (only the Lite
+      # compose listed them), so setting LIFEBOAT_GRACE_HOURS in .env silently
+      # did nothing here. Compose reads .env for variable SUBSTITUTION; a
+      # variable still has to be named in `environment:` to reach the process.
+      LIFEBOAT_LICENSE_SERVER_URL: "${LIFEBOAT_LICENSE_SERVER_URL:-https://license.interplay.iterate.ai}"
+      LIFEBOAT_AMI_PRODUCT_CODE: "${LIFEBOAT_AMI_PRODUCT_CODE:-}"
+      LIFEBOAT_GRACE_HOURS: "${LIFEBOAT_GRACE_HOURS:-24}"
+      LIFEBOAT_HEARTBEAT_INTERVAL_HOURS: "${LIFEBOAT_HEARTBEAT_INTERVAL_HOURS:-6}"
+      LIFEBOAT_PORTAL_URL: "${LIFEBOAT_PORTAL_URL:-}"
+      # Install telemetry: a hardware description + lifecycle state only --
+      # never a model name, prompt or token count. "off" disables the hardware
+      # block and the unlicensed census beat. See docs/telemetry.md.
+      LIFEBOAT_TELEMETRY: "${LIFEBOAT_TELEMETRY:-on}"
+      LIFEBOAT_CENSUS_INTERVAL_HOURS: "${LIFEBOAT_CENSUS_INTERVAL_HOURS:-24}"
+      LIFEBOAT_CONFIDENTIAL_COMPUTING: "${LIFEBOAT_CONFIDENTIAL_COMPUTING:-auto}"
+
+      # ---- Logging ---------------------------------------------------
+      LIFEBOAT_LOG_LEVEL: "${LIFEBOAT_LOG_LEVEL:-INFO}"
+      LIFEBOAT_AUDIT_REJECT_THROTTLE_SEC: "${LIFEBOAT_AUDIT_REJECT_THROTTLE_SEC:-600}"
+      LIFEBOAT_MODEL_DOWNLOAD_TIMEOUT_SECONDS: "${LIFEBOAT_MODEL_DOWNLOAD_TIMEOUT_SECONDS:-3600}"
+
+      # ---- Caches (must land inside the persistent volume) -----------
+      # HOME is redirected because the image has no USER directive and the
+      # inherited /root is not writable by uid 999 — triton would fail at
+      # import trying to create ~/.cache. Same fix as the NVIDIA file.
+      HOME: /opt/lifeboat/.lifeboat
+      TRITON_CACHE_DIR: "${TRITON_CACHE_DIR:-/opt/lifeboat/.lifeboat/.cache/triton}"
+      XDG_CACHE_HOME: "${XDG_CACHE_HOME:-/opt/lifeboat/.lifeboat/.cache}"
+      TMPDIR: "${LIFEBOAT_JIT_TMPDIR:-/opt/lifeboat/.lifeboat/tmp}"
+      TMP: "${LIFEBOAT_JIT_TMPDIR:-/opt/lifeboat/.lifeboat/tmp}"
+      TEMP: "${LIFEBOAT_JIT_TMPDIR:-/opt/lifeboat/.lifeboat/tmp}"
+      HF_XET_HIGH_PERFORMANCE: "${HF_XET_HIGH_PERFORMANCE:-1}"
+      PYTORCH_ALLOC_CONF: "${PYTORCH_ALLOC_CONF:-expandable_segments:True}"
+
+    security_opt:
+      - no-new-privileges:true
+      # REQUIRED by ROCm (userspace DMA ioctls through /dev/kfd). Documented
+      # by AMD for every ROCm container; without it HIP initialisation fails.
+      - seccomp:unconfined
+
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+
+    read_only: true
+    tmpfs:
+      - /tmp:size=${LIFEBOAT_TMP_SIZE:-512M}
+      - /run:size=10M
+
+    # ---- ipc: host is REQUIRED on ROCm. Do not "harden" this to shareable. ----
+    # Measured on an MI210: with `ipc: shareable`, the engine dies at its very
+    # FIRST GPU allocation — parallel_state.py's
+    # `torch.ones(..., device=self.device)` during world-group init — with
+    #
+    #   Memory critical error by agent node-0 ... Reason: Memory in use.
+    #   Fatal Python error: Aborted
+    #
+    # which is an HSA-level fault that names neither IPC nor shared memory, so
+    # it reads like a driver or an out-of-memory problem. It is neither: the
+    # host IPC namespace is what ROCm's userspace needs, and switching to it is
+    # the whole fix. The server then reaches ready in ~30s.
+    #
+    # NOTE there is no shm_size here, and that is deliberate rather than an
+    # omission: with host IPC the container uses the HOST's /dev/shm, so a
+    # shm_size would be ignored — and podman refuses the combination outright
+    # ("cannot set shmsize when running in the host IPC Namespace"). Size the
+    # host's /dev/shm instead if a tp>1 launch trips
+    # server_manager._preflight_shared_memory.
+    ipc: host
+
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8001/api/version"]
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 3
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "${LOG_MAX_SIZE:-50m}"
+        max-file: "${LOG_MAX_FILES:-3}"
+
+volumes:
+  lifeboat-data:
+    driver: local

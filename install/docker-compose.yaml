@@ -1,0 +1,470 @@
+# ============================================================
+# Lifeboat — customer-facing Docker Compose
+# by iterate.ai
+#
+# Customer deploy flow (no scripts on the host):
+#
+#   # First time on this host (or after a NEW host install):
+#   wget https://raw.githubusercontent.com/IterateAI/Lifeboat/main/docker-compose.yaml
+#   wget https://raw.githubusercontent.com/IterateAI/Lifeboat/main/.env.example -O .env
+#   nano .env                                  # fill in passwords / paths
+#   docker compose up -d
+#
+#   # Every upgrade:
+#   docker compose down
+#   docker pull iterateai/lifeboat:latest
+#   docker compose up -d
+#
+# What `compose up` does:
+#   1. Runs the `host-setup` init service ONCE (privileged + pid=host).
+#      It nsenter's into the host, writes a single canonical CDI spec at
+#      /etc/cdi/nvidia.yaml (removing any competing /var/run/cdi copy the
+#      NVIDIA toolkit may have written), and installs
+#      lifeboat-cdi-refresh.service so reboots and NVIDIA driver upgrades
+#      don't break --device nvidia.com/gpu=all.
+#   2. Then starts the `lifeboat` service, gated on the init having
+#      exited 0. The main service runs with the full hardening flags
+#      (no-new-privileges, cap_drop ALL, read-only root, tmpfs scratch).
+#
+# NVIDIA GPU required by THIS file. AMD/ROCm hosts use the companion
+# docker-compose.rocm.yaml with the :latest-rocm image instead — GPU access,
+# IPC and seccomp all differ. Intel XPU/Gaudi is not supported.
+#
+# Licensing: every Lifeboat install runs through a 24h trial, then
+# requires either an LB-XXXX-XXXX-XXXX-XXXX activation key or an
+# offline .lic file (control plane + UI stay reachable in every state;
+# only the inference-server start path is gated). The licensing
+# env vars (LIFEBOAT_LICENSE_SERVER_URL, LIFEBOAT_AMI_PRODUCT_CODE,
+# LIFEBOAT_GRACE_HOURS, LIFEBOAT_HEARTBEAT_INTERVAL_HOURS) live at
+# the bottom of .env.example — defaults work in production. AMI
+# customers self-issue on first boot via IMDSv2 and never see the
+# activation modal. See README's "Licensing & Activation" section.
+#
+# Requires (verify with the commands below):
+#   - Docker Engine          >= 25.0    (native CDI device support)
+#       docker version --format '{{.Server.Version}}'
+#   - Docker Compose         >= 2.21    (CDI in deploy.resources)
+#       docker compose version --short
+#   - NVIDIA Container Toolkit >= 1.17  (nvidia-ctk cdi generate)
+#       nvidia-ctk --version
+#   - NVIDIA Driver          >= 535.x   (>= 575.x for cu130 / Blackwell)
+#       nvidia-smi --query-gpu=driver_version --format=csv,noheader
+#   - NVIDIA GPU             Volta+ (Compute Capability >= 7.0)
+#   - Linux x86_64
+#
+# If any check fails, `docker compose up` will error early with a clear
+# message ("unknown driver: cdi", "no such device driver", etc.) — fix
+# the prereq before retrying.
+#
+# Read variable docs in `.env.example` for what each setting controls.
+# ============================================================
+
+services:
+  # ----------------------------------------------------------------------
+  # host-setup: bootstraps /etc/cdi/nvidia.yaml + the nvidia-cdi-refresh
+  # systemd oneshot. Runs once per `compose up`; exits cleanly; never
+  # restarted. Safe to re-run — it's idempotent and the regeneration
+  # picks up new driver libraries after upgrades.
+  # ----------------------------------------------------------------------
+  host-setup:
+    image: iterateai/lifeboat:${LIFEBOAT_IMAGE_TAG:-latest}
+    command: ["host-setup"]
+    privileged: true
+    pid: host
+    restart: "no"
+    # Don't let it hold the compose project up if it fails on a host
+    # that's not Linux+NVIDIA — compose will surface the error and the
+    # main service won't start.
+    init: true
+
+  # ----------------------------------------------------------------------
+  # lifeboat: the actual inference control plane + node agent + watchdog.
+  # Hardening matches what SECURITY.md documents.
+  # ----------------------------------------------------------------------
+  lifeboat:
+    image: iterateai/lifeboat:${LIFEBOAT_IMAGE_TAG:-latest}
+    container_name: ${CONTAINER_NAME:-lifeboat}
+    restart: ${RESTART_POLICY:-always}
+
+    # Run as the in-image lifeboat user from PID 1 onwards. The image
+    # creates this user (system uid via `useradd -r`) and chowns
+    # /opt/lifeboat/* to it. Without this, tini starts as root, and
+    # because we also `cap_drop: ALL` (which strips CAP_DAC_OVERRIDE),
+    # root can no longer ignore file mode bits — `exec` fails with
+    # "Permission denied" on any file that isn't world-executable.
+    # Running as the file owner sidesteps the problem entirely AND
+    # keeps the hardening posture. The entrypoint detects it's not
+    # root and skips the setpriv drop step.
+    user: "lifeboat:lifeboat"
+
+    depends_on:
+      host-setup:
+        condition: service_completed_successfully
+
+    # CDI GPU device passthrough (survives the 24h NVML cgroup wipe that
+    # plagues --gpus all). Requires Compose >= 2.21 + Engine >= 25.0.
+    # `capabilities: [gpu]` is required by the compose schema validator
+    # even when using the CDI driver — it's a legacy validation rule
+    # from the older nvidia-runtime device-request shape; the value is
+    # passed through but not strictly enforced by the CDI code path.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: cdi
+              device_ids:
+                - nvidia.com/gpu=${GPU_DEVICE_SELECTOR:-all}
+              capabilities:
+                - gpu
+
+    ports:
+      - "${LIFEBOAT_CONTROL_PORT:-8001}:8001"
+      # Node agent — usually only exposed inside the cluster network,
+      # uncomment if you run multi-node and need cross-node agent traffic:
+      # - "${LIFEBOAT_AGENT_PORT:-8002}:8002"
+
+    volumes:
+      # Persistent data: DB (users, servers, audit), JWT secret, HF cache,
+      # and JIT caches (FlashInfer/Triton write under ~/.cache, which is
+      # redirected here via HOME=/opt/lifeboat/.lifeboat below).
+      # The volume MUST mount at /opt/lifeboat/.lifeboat — login + audit
+      # break on any other path.
+      - lifeboat-data:/opt/lifeboat/.lifeboat
+
+      # Models directory. Default is a host bind mount at $MODELS_DIR;
+      # switch to a named docker volume by setting MODELS_DIR to e.g.
+      # `lifeboat-models` and uncommenting the volume below.
+      - ${MODELS_DIR:-./models}:/models
+      # flashinfer downloads missing kernel cubins AT RUNTIME. Its resolver
+      # (flashinfer/jit/env.py::_get_cubin_dir) gives the installed
+      # flashinfer-cubin PACKAGE priority over $FLASHINFER_CUBIN_DIR, so the
+      # env var cannot redirect it — and the package lives on the read-only
+      # rootfs. Result on any arch whose cubins aren't preshipped (GB10 /
+      # sm_121a: flashinfer-cubin ships only Sm100a/Sm100f/Sm103a, see
+      # flashinfer-ai/flashinfer#3294):
+      #   OSError: [Errno 30] Read-only file system:
+      #     .../site-packages/flashinfer_cubin/cubins/<sha>
+      # -> NVFP4 MoE dies at CUDA-graph capture. Overlay a writable dir on that
+      # path, seeded with the image's shipped cubins, so runtime fetches land.
+      #
+      # It MUST be a NAMED VOLUME, not a host bind, and the difference is not
+      # cosmetic. Docker seeds an empty named volume from whatever the image has
+      # at that path — all 1.9 GB of prebuilt cubins, owned by
+      # lifeboat:lifeboat, hence writable by uid 999. A host bind does NEITHER:
+      # it starts empty, so it HIDES every cubin the image shipped and each one
+      # has to be re-fetched or JIT'd at runtime, and a host dir created by root
+      # is unwritable by the container user — which brings back the exact
+      # read-only failure this overlay exists to prevent. Override
+      # FLASHINFER_CUBIN_HOST_DIR with a host path ONLY if you have pre-seeded
+      # it from the image and chowned it 999:999.
+      # NOTE the ${LIFEBOAT_PYTHON} in the path: the venv directory is named
+      # after the interpreter minor version, so this MUST track the image's
+      # Python. Ubuntu 24.04 images are python3.12; Ubuntu 22.04 images are
+      # python3.10. A stale value here silently creates a bind mount at a
+      # non-existent path instead of overlaying the cubin dir, and flashinfer
+      # is back to failing on a read-only rootfs.
+      #
+      # The default is python3.12 because that is what the published images
+      # ship on BOTH architectures from 2.2.23 onward. It was python3.10 until
+      # then, which was right for arm64 (built on 22.04) and wrong for amd64
+      # (built on 24.04) — the two halves were on different lineages, so no
+      # single default could be correct. Override only if you build your own
+      # image on a 22.04 base.
+      - ${FLASHINFER_CUBIN_HOST_DIR:-lifeboat-flashinfer-cubins}:/opt/lifeboat/venv/lib/${LIFEBOAT_PYTHON:-python3.12}/site-packages/flashinfer_cubin/cubins
+
+      # File-based secrets (preferred over -e for production). Set
+      # ADMIN_PASS_FILE / CLUSTER_SECRET_FILE in .env to the HOST paths;
+      # they're bind-mounted into /run/secrets/ where the entrypoint
+      # reads them. No cleartext in `docker inspect`.
+      - ${ADMIN_PASS_FILE:-/dev/null}:/run/secrets/admin-pass:ro
+      - ${CLUSTER_SECRET_FILE:-/dev/null}:/run/secrets/cluster-secret:ro
+
+      # TLS (optional). Set TLS_CERT_DIR to a host directory containing
+      # cert.pem + key.pem to serve the control plane over HTTPS.
+      - ${TLS_CERT_DIR:-/dev/null}:/certs:ro
+
+    # Confidential-VM guest device (confidential computing only).
+    # `confidential_computing.detect_cpu_tee` looks for /dev/sev-guest
+    # (AMD SEV-SNP) or /dev/tdx_guest (Intel TDX), but Docker gives a
+    # container a minimal /dev — neither node is visible by default, so on
+    # a GENUINE confidential VM the probe still reports "not a CVM" and the
+    # status endpoint reads `unsupported`. Pass the node through explicitly:
+    #
+    #   LIFEBOAT_CC_GUEST_DEVICE=/dev/sev-guest:/dev/sev-guest   # AMD SEV-SNP
+    #   LIFEBOAT_CC_GUEST_DEVICE=/dev/tdx_guest:/dev/tdx_guest   # Intel TDX
+    #
+    # Left as a /dev/null self-mapping by default because Docker REFUSES to
+    # start a container whose `devices:` entry doesn't exist on the host —
+    # hardcoding /dev/sev-guest would break every non-CC deployment.
+    devices:
+      - ${LIFEBOAT_CC_GUEST_DEVICE:-/dev/null:/dev/null}
+
+    environment:
+      # ---- Admin bootstrap (required on first start) ----------------
+      LIFEBOAT_ADMIN_EMAIL: "${LIFEBOAT_ADMIN_EMAIL:-admin@iterate.ai}"
+      # Two ways to set the admin password — pick ONE in .env:
+      #   (Recommended) set ADMIN_PASS_FILE to a host path that contains
+      #     the password. The file gets bind-mounted to /run/secrets/admin-pass.
+      #     IMPORTANT: the file must be readable by the in-container lifeboat
+      #     user (uid 999). `chmod 644 /etc/lifeboat/admin-pass` works fine
+      #     because the parent /etc/lifeboat is 0700 root:root.
+      #   (Quick start) leave ADMIN_PASS_FILE blank and set
+      #     LIFEBOAT_ADMIN_PASSWORD inline. Cleartext shows up in `docker inspect`.
+      #
+      # The ${VAR:+value} form means "empty if VAR is unset/blank, else value".
+      # So we don't set LIFEBOAT_ADMIN_PASSWORD_FILE at all unless the customer
+      # actually configured a host path — otherwise the entrypoint never tries
+      # to read /run/secrets/admin-pass and falls through to the inline var.
+      LIFEBOAT_ADMIN_PASSWORD_FILE: "${ADMIN_PASS_FILE:+/run/secrets/admin-pass}"
+      LIFEBOAT_ADMIN_PASSWORD: "${LIFEBOAT_ADMIN_PASSWORD:-}"
+
+      # ---- Cluster (multi-node) -------------------------------------
+      # Same pattern as admin password.
+      LIFEBOAT_CLUSTER_SECRET_FILE: "${CLUSTER_SECRET_FILE:+/run/secrets/cluster-secret}"
+      LIFEBOAT_CLUSTER_SECRET: "${LIFEBOAT_CLUSTER_SECRET:-}"
+      LIFEBOAT_AGENT_PORT: "${LIFEBOAT_AGENT_PORT:-8002}"
+
+      # ---- Ports + storage ------------------------------------------
+      LIFEBOAT_CONTROL_PORT: "${LIFEBOAT_CONTROL_PORT:-8001}"
+      LIFEBOAT_DATA_DIR: "${LIFEBOAT_DATA_DIR:-/opt/lifeboat/.lifeboat}"
+      LIFEBOAT_MODELS_DIR: "${LIFEBOAT_MODELS_DIR:-/models}"
+      LIFEBOAT_MODEL_DOWNLOAD_DIR: "${LIFEBOAT_MODEL_DOWNLOAD_DIR:-/models}"
+      # NOTE: LIFEBOAT_STATIC_DIR is INTENTIONALLY OMITTED from this
+      # compose. app.py reads it with `os.environ.get("LIFEBOAT_STATIC_DIR",
+      # DEFAULT)` which honors DEFAULT only when the variable is UNSET;
+      # passing it as an empty string makes Path("") evaluate to Path(".")
+      # and the SPA mount serves from /opt/lifeboat (no index.html →
+      # "Frontend not found"). Leave it out so the image's default
+      # /opt/lifeboat/venv/.../control_plane/static path kicks in. If you
+      # genuinely need to override, edit this compose to add the entry
+      # back AND ensure the host's path is bind-mounted at the same path
+      # inside the container.
+
+      # ---- Watchdog / supervisor ------------------------------------
+      LIFEBOAT_MAX_AUTO_RESTARTS: "${LIFEBOAT_MAX_AUTO_RESTARTS:-5}"
+      LIFEBOAT_RESTART_COOLDOWN: "${LIFEBOAT_RESTART_COOLDOWN:-60}"
+      LIFEBOAT_STARTING_TIMEOUT_SEC: "${LIFEBOAT_STARTING_TIMEOUT_SEC:-900}"
+      LIFEBOAT_STARTING_STALL_SEC: "${LIFEBOAT_STARTING_STALL_SEC:-300}"
+      LIFEBOAT_STARTING_HARD_TIMEOUT_SEC: "${LIFEBOAT_STARTING_HARD_TIMEOUT_SEC:-3600}"
+      LIFEBOAT_STOP_GRACE_SEC: "${LIFEBOAT_STOP_GRACE_SEC:-30}"
+      LIFEBOAT_UNHEALTHY_GRACE_SEC: "${LIFEBOAT_UNHEALTHY_GRACE_SEC:-120}"
+      LIFEBOAT_ZOMBIE_REAP_INTERVAL: "${LIFEBOAT_ZOMBIE_REAP_INTERVAL:-30}"
+
+      # ---- Inference proxy / load balancer --------------------------
+      # The admin-selected routing mode (SuperFast / Hybrid /
+      # Max Concurrency / Queue All) lives in the SQLite config table
+      # under ``routing_mode`` — set it from the Configuration page,
+      # not here. The variables below tune each mode's behavior.
+      LIFEBOAT_LB_SUPERFAST_CAP: "${LIFEBOAT_LB_SUPERFAST_CAP:-4}"
+      LIFEBOAT_LB_HYBRID_INFLIGHT: "${LIFEBOAT_LB_HYBRID_INFLIGHT:-10}"
+      LIFEBOAT_LB_HYBRID_RATE: "${LIFEBOAT_LB_HYBRID_RATE:-10.0}"
+      LIFEBOAT_LB_HYBRID_WINDOW_SEC: "${LIFEBOAT_LB_HYBRID_WINDOW_SEC:-5.0}"
+      LIFEBOAT_LB_HYBRID_HOT_EXIT_RATIO: "${LIFEBOAT_LB_HYBRID_HOT_EXIT_RATIO:-0.8}"
+      LIFEBOAT_LB_QUEUE_ALL_DEPTH_MULTIPLIER: "${LIFEBOAT_LB_QUEUE_ALL_DEPTH_MULTIPLIER:-1000}"
+      LIFEBOAT_LB_QUEUE_ALL_TTL_SEC: "${LIFEBOAT_LB_QUEUE_ALL_TTL_SEC:-600}"
+      LIFEBOAT_LB_QUEUE_ENABLED: "${LIFEBOAT_LB_QUEUE_ENABLED:-false}"
+      LIFEBOAT_LB_QUEUE_TTL_SEC: "${LIFEBOAT_LB_QUEUE_TTL_SEC:-30}"
+      LIFEBOAT_LB_QUEUE_MAX_DEPTH_MULTIPLIER: "${LIFEBOAT_LB_QUEUE_MAX_DEPTH_MULTIPLIER:-4}"
+      LIFEBOAT_LB_QUEUE_DEADLINE_BOOST_SEC: "${LIFEBOAT_LB_QUEUE_DEADLINE_BOOST_SEC:-10}"
+      LIFEBOAT_LB_POOL_LRU_TTL_SEC: "${LIFEBOAT_LB_POOL_LRU_TTL_SEC:-300}"
+      LIFEBOAT_LB_IMAGE_TOKENS: "${LIFEBOAT_LB_IMAGE_TOKENS:-2048}"
+      # ---- Automatic VRAM sizing + watchdog --------------------------
+      LIFEBOAT_AUTO_MEM_PEER_GB: "${LIFEBOAT_AUTO_MEM_PEER_GB:-8}"
+      LIFEBOAT_AUTO_MEM_PEER_MAX_FRACTION: "${LIFEBOAT_AUTO_MEM_PEER_MAX_FRACTION:-0.4}"
+      LIFEBOAT_WATCHDOG_STARTUP_GRACE: "${LIFEBOAT_WATCHDOG_STARTUP_GRACE:-180}"
+      LIFEBOAT_LB_AUDIO_BYTES_PER_TOKEN: "${LIFEBOAT_LB_AUDIO_BYTES_PER_TOKEN:-640}"
+      LIFEBOAT_TTS_MAX_CONCURRENCY: "${LIFEBOAT_TTS_MAX_CONCURRENCY:-2}"
+      LIFEBOAT_LB_REAPER_INTERVAL_SEC: "${LIFEBOAT_LB_REAPER_INTERVAL_SEC:-60}"
+      LIFEBOAT_PROXY_CACHE_TTL: "${LIFEBOAT_PROXY_CACHE_TTL:-30}"
+      LIFEBOAT_PROXY_MAX_CONNECTIONS: "${LIFEBOAT_PROXY_MAX_CONNECTIONS:-200}"
+      LIFEBOAT_PROXY_MAX_KEEPALIVE: "${LIFEBOAT_PROXY_MAX_KEEPALIVE:-50}"
+
+      # ---- Server warmup --------------------------------------------
+      # Warm a server with one tiny request after it starts so the first
+      # real request isn't cold. On by default; set 0/false to disable.
+      LIFEBOAT_WARMUP_ON_START: "${LIFEBOAT_WARMUP_ON_START:-true}"
+      LIFEBOAT_WARMUP_TIMEOUT_SEC: "${LIFEBOAT_WARMUP_TIMEOUT_SEC:-300}"
+      LIFEBOAT_WARMUP_REQUEST_TIMEOUT_SEC: "${LIFEBOAT_WARMUP_REQUEST_TIMEOUT_SEC:-120}"
+      LIFEBOAT_DIAGNOSTICS_TIMEOUT_SEC: "${LIFEBOAT_DIAGNOSTICS_TIMEOUT_SEC:-120}"
+      # Auto-start servers one-at-a-time on boot (load+warm each before next).
+      LIFEBOAT_AUTOSTART_SEQUENTIAL: "${LIFEBOAT_AUTOSTART_SEQUENTIAL:-true}"
+      LIFEBOAT_AUTOSTART_READY_TIMEOUT_SEC: "${LIFEBOAT_AUTOSTART_READY_TIMEOUT_SEC:-600}"
+
+      # ---- Secondary GGUF engine ------------------------------------
+      # Runs the bundled GGUF engine for quantized models the tensor engine
+      # can't load (arch not in
+      # transformers' GGUF table, e.g. 'qwen35'), GGUF vision (mmproj) and GGUF
+      # embeddings. Engine is picked per-server in the UI; these tune it.
+      LIFEBOAT_LLAMACPP_NGL: "${LIFEBOAT_LLAMACPP_NGL:-99}"
+      # Empty = derive slots from the server's max_concurrency (<=16). Set a number to pin.
+      LIFEBOAT_LLAMACPP_PARALLEL: "${LIFEBOAT_LLAMACPP_PARALLEL:-}"
+      # Empty = derived from PHYSICAL cores, honouring the cgroup CPU quota.
+      # The engine's own default reads the cores it can SEE, which inside a
+      # `--cpus N` container is the HOST's count. Sets --threads (decode) and
+      # --threads-batch (prefill).
+      LIFEBOAT_LLAMACPP_THREADS: "${LIFEBOAT_LLAMACPP_THREADS:-}"
+      # Quantized KV cache. Empty = auto (q8_0 for K on memory-constrained
+      # hosts). Only K automatically: a quantized V cache needs flash-attention
+      # active in the build, and the launch FAILS rather than degrades if it is
+      # off.
+      LIFEBOAT_LLAMACPP_CACHE_TYPE_K: "${LIFEBOAT_LLAMACPP_CACHE_TYPE_K:-}"
+      LIFEBOAT_LLAMACPP_CACHE_TYPE_V: "${LIFEBOAT_LLAMACPP_CACHE_TYPE_V:-}"
+      # Shape the model-size budget GET /api/hardware/profile reports. They do
+      # not cap anything at runtime; they stop a host being advised to load a
+      # model that leaves no room for the OS.
+      LIFEBOAT_HOST_RESERVE_GB: "${LIFEBOAT_HOST_RESERVE_GB:-1.6}"
+      LIFEBOAT_CP_RESERVE_GB: "${LIFEBOAT_CP_RESERVE_GB:-0.35}"
+      LIFEBOAT_LLAMACPP_EXTRA_ARGS: "${LIFEBOAT_LLAMACPP_EXTRA_ARGS:-}"
+      LIFEBOAT_LLAMACPP_POOLING: "${LIFEBOAT_LLAMACPP_POOLING:-}"
+
+      # ---- Confidential computing (TEE) -----------------------------
+      # The control plane DETECTS whether this host is a confidential VM
+      # (SEV-SNP / TDX) with the GPU in CC mode and attests it. `auto`
+      # (default) reports it without ever blocking start; `require` gates
+      # inference-server start on a verified attestation; `off` disables.
+      # NOTE: the TEE must be provided by the HOST — compose can't create a
+      # confidential VM. Run this stack inside a CVM (Azure NCC H100, GCP
+      # Confidential VM, or on-prem H100/H200) for the protection to apply.
+      # ---- Licensing ----------------------------------------------------
+      # These were documented in .env.example and at the top of this file but
+      # were NOT forwarded to the container on this path (only the Lite
+      # compose listed them), so setting LIFEBOAT_GRACE_HOURS in .env silently
+      # did nothing here. Compose reads .env for variable SUBSTITUTION; a
+      # variable still has to be named in `environment:` to reach the process.
+      LIFEBOAT_LICENSE_SERVER_URL: "${LIFEBOAT_LICENSE_SERVER_URL:-https://license.interplay.iterate.ai}"
+      LIFEBOAT_AMI_PRODUCT_CODE: "${LIFEBOAT_AMI_PRODUCT_CODE:-}"
+      LIFEBOAT_GRACE_HOURS: "${LIFEBOAT_GRACE_HOURS:-24}"
+      LIFEBOAT_HEARTBEAT_INTERVAL_HOURS: "${LIFEBOAT_HEARTBEAT_INTERVAL_HOURS:-6}"
+      LIFEBOAT_PORTAL_URL: "${LIFEBOAT_PORTAL_URL:-}"
+      # Install telemetry: a hardware description + lifecycle state only --
+      # never a model name, prompt or token count. "off" disables the hardware
+      # block and the unlicensed census beat. See docs/telemetry.md.
+      LIFEBOAT_TELEMETRY: "${LIFEBOAT_TELEMETRY:-on}"
+      LIFEBOAT_CENSUS_INTERVAL_HOURS: "${LIFEBOAT_CENSUS_INTERVAL_HOURS:-24}"
+      LIFEBOAT_CONFIDENTIAL_COMPUTING: "${LIFEBOAT_CONFIDENTIAL_COMPUTING:-auto}"
+      LIFEBOAT_CC_ATTESTATION_MODE: "${LIFEBOAT_CC_ATTESTATION_MODE:-local}"
+      LIFEBOAT_CC_NRAS_URL: "${LIFEBOAT_CC_NRAS_URL:-https://nras.attestation.nvidia.com}"
+      LIFEBOAT_CC_VERIFY_INTERVAL_HOURS: "${LIFEBOAT_CC_VERIFY_INTERVAL_HOURS:-6}"
+      # Interpreter owning the NVIDIA attestation SDK. It pins an old
+      # cryptography, so the image isolates it in its own venv and calls it
+      # as a subprocess. Empty = the image default (/opt/nv-attest/bin/python).
+      LIFEBOAT_CC_ATTEST_PYTHON: "${LIFEBOAT_CC_ATTEST_PYTHON:-}"
+      # Optional appraisal policy (path inside the container; mount it in).
+      # Empty = verify the report is authentic but enforce no claim rules.
+      LIFEBOAT_CC_POLICY_FILE: "${LIFEBOAT_CC_POLICY_FILE:-}"
+      # Encrypted weights decrypt into an anonymous in-RAM memfd (never to
+      # disk). 1 forces the portable in-memory fallback. Debug knob only —
+      # Lifeboat falls back automatically when memfd isn't usable.
+      LIFEBOAT_CC_WEIGHTS_INMEM: "${LIFEBOAT_CC_WEIGHTS_INMEM:-}"
+
+      # ---- Logging --------------------------------------------------
+      # Level for the control plane's OWN logger (uvicorn's access log is
+      # separate). INFO is the default and is where the operational decisions
+      # are reported: derived auto mem-fraction + peer reserve, measured
+      # footprints, warmup results, error->running reconciliation, spec-decode
+      # auto-resolution, GGUF engine auto-routing, embedding auto-detect. Raise
+      # to WARNING for a quieter log, DEBUG when diagnosing.
+      LIFEBOAT_LOG_LEVEL: "${LIFEBOAT_LOG_LEVEL:-INFO}"
+
+      # ---- Audit log ------------------------------------------------
+      # Throttle window (s) for repeated /v1/* auth rejections so a bad
+      # client polling with a stale key can't bury operator actions. 0 = off.
+      LIFEBOAT_AUDIT_REJECT_THROTTLE_SEC: "${LIFEBOAT_AUDIT_REJECT_THROTTLE_SEC:-600}"
+
+      # ---- Model downloads ------------------------------------------
+      LIFEBOAT_MODEL_DOWNLOAD_TIMEOUT_SECONDS: "${LIFEBOAT_MODEL_DOWNLOAD_TIMEOUT_SECONDS:-3600}"
+      LIFEBOAT_DOWNLOAD_PROGRESS_RETENTION: "${LIFEBOAT_DOWNLOAD_PROGRESS_RETENTION:-86400}"
+      HF_TOKEN: "${HF_TOKEN:-}"
+      HF_HOME: "${HF_HOME:-/opt/lifeboat/.lifeboat/hf_cache}"
+      HF_HUB_ENABLE_HF_TRANSFER: "${HF_HUB_ENABLE_HF_TRANSFER:-1}"
+
+      # ---- TLS (optional) -------------------------------------------
+      LIFEBOAT_TLS_CERT: "${LIFEBOAT_TLS_CERT:-}"
+      LIFEBOAT_TLS_KEY: "${LIFEBOAT_TLS_KEY:-}"
+
+      # ---- CUDA / PyTorch tuning ------------------------------------
+      PYTORCH_ALLOC_CONF: "${PYTORCH_ALLOC_CONF:-expandable_segments:True}"
+      NVIDIA_VISIBLE_DEVICES: "${NVIDIA_VISIBLE_DEVICES:-all}"
+      NVIDIA_DRIVER_CAPABILITIES: "${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}"
+
+      # ---- JIT / cache locations (writable under read_only root FS) -
+      # The root FS is read-only for security hardening. Some libraries
+      # (FlashInfer in particular) hardcode `pathlib.Path.home() / ".cache"`
+      # and IGNORE XDG_CACHE_HOME entirely. The reliable fix is to
+      # override HOME so that `Path.home()` itself resolves into the
+      # persistent lifeboat-data volume — which the lifeboat user owns
+      # and can write to. The XDG/Triton/FlashInfer-specific env vars
+      # below are kept as belt-and-suspenders for libraries that DO
+      # honor them (cheaper than re-deriving from HOME at each call site).
+      HOME: /opt/lifeboat/.lifeboat
+      FLASHINFER_WORKSPACE_DIR: "${FLASHINFER_WORKSPACE_DIR:-/opt/lifeboat/.lifeboat/.cache/flashinfer}"
+      FLASHINFER_JIT_CACHE_DIR: "${FLASHINFER_JIT_CACHE_DIR:-/opt/lifeboat/.lifeboat/.cache/flashinfer}"
+      # Point nvcc/ninja scratch at the persistent data volume, NOT the small
+      # RAM-backed /tmp tmpfs. CUTLASS template expansion needs GBs; on a host
+      # where system RAM is also GPU memory (GB10 unified), growing the tmpfs
+      # would steal from the model. Disk-backed also means the JIT cache
+      # survives restarts, so the multi-minute first-launch compile is paid once.
+      TMPDIR: "${LIFEBOAT_JIT_TMPDIR:-/opt/lifeboat/.lifeboat/tmp}"
+      TMP: "${LIFEBOAT_JIT_TMPDIR:-/opt/lifeboat/.lifeboat/tmp}"
+      TEMP: "${LIFEBOAT_JIT_TMPDIR:-/opt/lifeboat/.lifeboat/tmp}"
+      # flashinfer >=0.6.15 asserts flashinfer-cubin==flashinfer_python, but cubin
+      # lags (newest 0.6.13 vs required python 0.6.15.post1) so an exact match is
+      # impossible; the cubin is only a kernel accelerator (flashinfer JITs the
+      # rest). Bypass the check (flashinfer's documented escape hatch). Also set
+      # in the image ENV + launch_profiles; kept here so it reaches the engine
+      # subprocess (server_manager copies os.environ) without an image rebuild.
+      FLASHINFER_DISABLE_VERSION_CHECK: "${FLASHINFER_DISABLE_VERSION_CHECK:-1}"
+      TRITON_CACHE_DIR: "${TRITON_CACHE_DIR:-/opt/lifeboat/.lifeboat/.cache/triton}"
+      XDG_CACHE_HOME: "${XDG_CACHE_HOME:-/opt/lifeboat/.lifeboat/.cache}"
+      # Suppress the FutureWarning by using the new HF Xet flag.
+      HF_XET_HIGH_PERFORMANCE: "${HF_XET_HIGH_PERFORMANCE:-1}"
+
+    # ---- Hardening --------------------------------------------------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      # /tmp is nvcc's scratch during CUDA JIT. 200M is NOT enough to expand
+      # CUTLASS templates — the build dies with a misleading compiler error:
+      #   cute/algorithm/tuple_algorithms.hpp: catastrophic error:
+      #   error while writing generated C file: No space left on device
+      # It only bites where kernels actually JIT. On arch/platform combos with
+      # no prebuilt kernels (e.g. GB10 / sm_121a, where flashinfer ships none)
+      # EVERY kernel JITs, so this fires on the first server start.
+      # tmpfs is RAM-backed, so we keep it modest and point TMPDIR at the
+      # persistent data volume instead (see LIFEBOAT_JIT_TMPDIR below).
+      - /tmp:size=${LIFEBOAT_TMP_SIZE:-512M}
+      - /run:size=10M
+
+    # Shared memory for NCCL intra-node transport. Multi-GPU servers
+    # (tp_size >= 2) launch the TP ranks as same-host subprocesses that
+    # talk over /dev/shm; Docker's 64MB default is far too small and
+    # ncclCommInitRank aborts with "unhandled system error". 8gb mirrors
+    # the Helm chart's shmSize. Single-GPU never hits this path.
+    shm_size: "${LIFEBOAT_SHM_SIZE:-8gb}"
+
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8001/api/version"]
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 3
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "${LOG_MAX_SIZE:-50m}"
+        max-file: "${LOG_MAX_FILES:-3}"
+
+volumes:
+  lifeboat-data:
+    driver: local
+  # Writable overlay for flashinfer's runtime cubin fetches. A named volume
+  # (not a bind) so Docker seeds it from the image's shipped cubins with the
+  # right ownership — see the mount comment above.
+  lifeboat-flashinfer-cubins:
+    driver: local
