@@ -5,9 +5,27 @@ Release notes for each published build. Binaries are on the
 
 Both artifact families use the Lifeboat product version, but they are cut
 independently and **the two numbers are not expected to match**. They happen to
-agree right now — desktop and container images are both `2.2.45` — but that is
+agree right now — desktop and container images are both `2.2.46` — but that is
 a coincidence of this release, not a guarantee. A desktop version is not a pullable image tag. Container releases are
 listed below; desktop releases have their own notes on each release page.
+
+## Desktop 2.2.46
+
+Three first-run defects, all reported from one Mac.
+
+- **MLX models could not be downloaded at all.** An MLX checkpoint *is*
+  safetensors, so the gate that refuses unservable safetensors matched an
+  `mlx-community` repository exactly and disabled Download — while its own
+  message advised looking for "an mlx-community build".
+- **An MLX download was allowed where MLX cannot run** — an Intel Mac, Windows,
+  or the Lite image would start a download that could never load. Both the
+  browser and server gates now require MLX to actually be present. GGUF keeps
+  no such condition; that engine ships in every shape.
+- **A recommended model pointed at a repository that does not exist.**
+  `Qwen/Qwen3-4B-Instruct-2507-GGUF` returns *Repository Not Found*, which
+  reads as a token problem because the dialog has a token selector under the
+  error. Every repository Lifeboat recommends is now existence-checked before
+  release, and checked against its own format tag.
 
 ## Desktop 2.2.45
 
