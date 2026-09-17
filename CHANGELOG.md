@@ -4,10 +4,21 @@ Release notes for each published build. Binaries are on the
 [releases page](../../releases).
 
 Both artifact families use the Lifeboat product version, but they are cut
-independently and **the two numbers are not expected to match**: the desktop
-apps are currently `2.2.44` while the newest container image and Helm chart are
-`2.2.40`. A desktop version is not a pullable image tag. Container releases are
+independently and **the two numbers are not expected to match**. They happen to
+agree right now — desktop and container images are both `2.2.45` — but that is
+a coincidence of this release, not a guarantee. A desktop version is not a pullable image tag. Container releases are
 listed below; desktop releases have their own notes on each release page.
+
+## Desktop 2.2.45
+
+- **Help on every console page now opens the page that answers that page's
+  questions** — Servers to the server lifecycle, Configuration to the
+  configuration reference, Alerts to alerts and health, and so on, rather than
+  a broad entry page. 2.2.44's links all resolved; this closes the extra click.
+- **The documentation behind it went from 15 pages to 70**, rewritten as
+  operator documentation with troubleshooting organised by symptom — a server
+  that will not start, slow responses, failing requests, downloads, tool calls,
+  nodes and clusters, and the desktop app.
 
 ## Desktop 2.2.44
 
