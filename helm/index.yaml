@@ -2,8 +2,56 @@ apiVersion: v1
 entries:
   lifeboat:
   - apiVersion: v2
+    appVersion: 2.2.46
+    created: "2026-09-17T23:17:29.297674+05:30"
+    description: 'Lifeboat — high-performance LLM inference server: control plane,
+      management UI and inference engine in a single GPU-enabled container, by iterate.ai. '
+    digest: 3d696f82e473da885dba101fa16d25d5f28511141339a0ade0ba4d197018886d
+    home: https://iterate.ai/lifeboat
+    icon: https://cdn.prod.website-files.com/66faf094459c16fad4ecb09a/6a750aa136518d956718d7d5_Lifboat-Logo-Black.png
+    keywords:
+    - llm
+    - inference
+    - agentic
+    - gpu
+    - nvidia
+    maintainers:
+    - email: arul@iterate.ai
+      name: iterate.ai
+    name: lifeboat
+    sources:
+    - https://iterate.ai/lifeboat
+    type: application
+    urls:
+    - https://raw.githubusercontent.com/IterateAI/lifeboat-releases/main/helm/lifeboat-2.2.46.tgz
+    version: 2.2.46
+  - apiVersion: v2
+    appVersion: 2.2.46
+    created: "2026-09-17T23:17:29.298298+05:30"
+    description: 'Lifeboat — high-performance LLM inference server: control plane,
+      management UI and inference engine in a single GPU-enabled container, by iterate.ai. '
+    digest: 3d696f82e473da885dba101fa16d25d5f28511141339a0ade0ba4d197018886d
+    home: https://iterate.ai/lifeboat
+    icon: https://cdn.prod.website-files.com/66faf094459c16fad4ecb09a/6a750aa136518d956718d7d5_Lifboat-Logo-Black.png
+    keywords:
+    - llm
+    - inference
+    - agentic
+    - gpu
+    - nvidia
+    maintainers:
+    - email: arul@iterate.ai
+      name: iterate.ai
+    name: lifeboat
+    sources:
+    - https://iterate.ai/lifeboat
+    type: application
+    urls:
+    - https://raw.githubusercontent.com/IterateAI/lifeboat-releases/main/helm/lifeboat-latest.tgz
+    version: 2.2.46
+  - apiVersion: v2
     appVersion: 2.2.40
-    created: "2026-09-16T18:31:18.484134+05:30"
+    created: "2026-09-17T23:17:29.297071+05:30"
     description: 'Lifeboat — high-performance LLM inference server: control plane,
       management UI and inference engine in a single GPU-enabled container, by iterate.ai. '
     digest: ec5d255b2ff48b2c68df3dd53beca273ef05b8923a02d201a8c28f5a40ff1086
@@ -25,28 +73,4 @@ entries:
     urls:
     - https://raw.githubusercontent.com/IterateAI/lifeboat-releases/main/helm/lifeboat-2.2.40.tgz
     version: 2.2.40
-  - apiVersion: v2
-    appVersion: 2.2.40
-    created: "2026-09-16T18:31:18.484887+05:30"
-    description: 'Lifeboat — high-performance LLM inference server: control plane,
-      management UI and inference engine in a single GPU-enabled container, by iterate.ai. '
-    digest: ec5d255b2ff48b2c68df3dd53beca273ef05b8923a02d201a8c28f5a40ff1086
-    home: https://iterate.ai/lifeboat
-    icon: https://cdn.prod.website-files.com/66faf094459c16fad4ecb09a/6a750aa136518d956718d7d5_Lifboat-Logo-Black.png
-    keywords:
-    - llm
-    - inference
-    - agentic
-    - gpu
-    - nvidia
-    maintainers:
-    - email: arul@iterate.ai
-      name: iterate.ai
-    name: lifeboat
-    sources:
-    - https://iterate.ai/lifeboat
-    type: application
-    urls:
-    - https://raw.githubusercontent.com/IterateAI/lifeboat-releases/main/helm/lifeboat-latest.tgz
-    version: 2.2.40
-generated: "2026-09-16T18:31:18.482756+05:30"
+generated: "2026-09-17T23:17:29.296117+05:30"
