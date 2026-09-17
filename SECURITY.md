@@ -14,15 +14,17 @@ macOS and Windows builds are code-signed by **Iterate Studio Inc**, so the
 operating system verifies them for you. A build that Gatekeeper or SmartScreen
 refuses did not come from us — do not bypass the warning, tell us instead.
 
-Linux builds carry a detached GPG signature and a `SHA256SUMS` file on each
-release:
+Linux has no equivalent, so each release carries a `SHA256SUMS` file and you
+should check it yourself:
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
-gpg --verify lifeboat-desktop_2.2.40_amd64.deb.asc
 ```
 
-The signing key fingerprint is published on each release page.
+Take `SHA256SUMS` from the release page over HTTPS, not from the same directory
+you were sent the binary in. We do **not** currently publish detached GPG
+signatures for the Linux builds — if you need one for a procurement or
+air-gapped review, write to security@iterate.ai and say so.
 
 ## What the product sends
 

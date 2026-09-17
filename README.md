@@ -31,12 +31,12 @@ CPU otherwise.
 
 | Platform | File | Status |
 |---|---|---|
-| **macOS** Apple Silicon (13+) | `Lifeboat-2.2.43-macos-arm64.dmg` | **available** — Metal + MLX |
-| **macOS** Intel (13+) | `Lifeboat-2.2.43-macos-x86_64.dmg` | **available** — GGUF only |
-| **Linux** Debian/Ubuntu x64 | `lifeboat-desktop_2.2.43_amd64.deb` | **available** |
-| **Linux** Debian/Ubuntu arm64 | `lifeboat-desktop_2.2.43_arm64.deb` | **available** |
-| **Linux** any distro, x64 | `Lifeboat-2.2.43-linux-x86_64.tar.gz` | **available** |
-| **Linux** any distro, arm64 | `Lifeboat-2.2.43-linux-aarch64.tar.gz` | **available** |
+| **macOS** Apple Silicon (13+) | `Lifeboat-2.2.44-macos-arm64.dmg` | **available** — Metal + MLX |
+| **macOS** Intel (13+) | `Lifeboat-2.2.44-macos-x86_64.dmg` | **available** — GGUF only |
+| **Linux** Debian/Ubuntu x64 | `lifeboat-desktop_2.2.44_amd64.deb` | **available** |
+| **Linux** Debian/Ubuntu arm64 | `lifeboat-desktop_2.2.44_arm64.deb` | **available** |
+| **Linux** any distro, x64 | `Lifeboat-2.2.44-linux-x86_64.tar.gz` | **available** |
+| **Linux** any distro, arm64 | `Lifeboat-2.2.44-linux-aarch64.tar.gz` | **available** |
 | **Windows** x64 | `Lifeboat-<ver>-setup.exe` | in progress |
 
 All builds are on the [releases page](../../releases/latest), with SHA-256
@@ -52,13 +52,13 @@ sha256sum -c SHA256SUMS --ignore-missing
 **Installing on Linux** — Debian and Ubuntu:
 
 ```sh
-sudo dpkg -i lifeboat-desktop_2.2.43_amd64.deb
+sudo dpkg -i lifeboat-desktop_2.2.44_amd64.deb
 ```
 
 Any other distro — the tarball unpacks to the same layout, rooted at `/`:
 
 ```sh
-sudo tar -C / -xzf Lifeboat-2.2.43-linux-x86_64.tar.gz
+sudo tar -C / -xzf Lifeboat-2.2.44-linux-x86_64.tar.gz
 ```
 
 Either way you get `/opt/lifeboat` plus two commands on `PATH`:
