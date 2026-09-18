@@ -4,10 +4,29 @@ Release notes for each published build. Binaries are on the
 [releases page](../../releases).
 
 Both artifact families use the Lifeboat product version, but they are cut
-independently and **the two numbers are not expected to match**. They happen to
-agree right now — desktop and container images are both `2.2.46` — but that is
-a coincidence of this release, not a guarantee. A desktop version is not a pullable image tag. Container releases are
+independently and **the two numbers are not expected to match**. Right now they differ: container
+images are `2.2.48` and the newest published desktop build is `2.2.46`. A desktop version is not a pullable image tag. Container releases are
 listed below; desktop releases have their own notes on each release page.
+
+## 2.2.48 — container images
+
+Published as `:latest` / `:2.2.48` (NVIDIA, amd64 + arm64), `:lite` /
+`:latest-lite` / `:2.2.48-lite` (CPU and integrated GPUs, amd64 + arm64),
+`:2.2.48-rocm` / `:latest-rocm` / `:amd` (AMD CDNA2, gfx90a), `:amd-mi300x`
+(CDNA3, gfx942) and `:amd-mi355x` (CDNA4, gfx950).
+
+- **Conversation-cache sizing on unified-memory hosts.** Lifeboat could reserve
+  more cache than the machine can give the GPU, so a model started, reported
+  healthy and then failed every request. It now sizes against the memory
+  actually available and reduces concurrency rather than the context window.
+- **Cache-cost arithmetic corrected.** A per-model figure was derived where the
+  model file states it outright, under-counting the cache cost of many current
+  models by half.
+- **Capacity rejections are counted** in `/metrics`. When every backend is busy
+  and the queue is off, the resulting 503 was the one rejection the counters
+  missed.
+- The model listing reports a context window for models served by engines that
+  expose no introspection endpoint, instead of leaving it blank.
 
 ## Desktop 2.2.46
 

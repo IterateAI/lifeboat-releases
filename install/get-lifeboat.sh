@@ -8,7 +8,7 @@
 #
 # Curl-pipe-bash entry point (set GIT_REF=<tag> to pin a release):
 #
-#   curl -sSL https://license.interplay.iterate.ai/lifeboat/get-lifeboat.sh | bash
+#   curl -sSL https://raw.githubusercontent.com/IterateAI/lifeboat-releases/main/install/get-lifeboat.sh | bash
 #
 # In-repo / interactive flags:
 #
@@ -21,7 +21,7 @@
 #
 # What it does (in order):
 #   1. Preflight every host requirement (Section A below).
-#   2. Download docker-compose.yaml + .env.example from https://license.interplay.iterate.ai/lifeboat/docker-compose.yaml and https://license.interplay.iterate.ai/lifeboat/.env.example
+#   2. Download docker-compose.yaml + .env.example from the lifeboat-releases repo (install/)
 #   3. Write .env with the customer's admin creds + models path by copying .env.example to .env and editing it.
 #   4. ``docker compose up -d``.
 #   5. Wait until ``/api/version`` returns 200 (up to 120 s).
@@ -40,7 +40,22 @@ set -euo pipefail
 # Config / defaults
 # ---------------------------------------------------------------------
 
-LIFEBOAT_RAW_BASE="https://license.interplay.iterate.ai/lifeboat"
+# GitHub, not the licence server. Three reasons, in order of how much they
+# matter to somebody running this:
+#
+#   * AVAILABILITY. Every new install fetches four files from here. Pointing
+#     that at a single Node-RED host means the licence server being down stops
+#     new installs, which is a much larger blast radius than licensing.
+#   * REVIEWABILITY. This is a curl-pipe-bash. People are right to want to read
+#     it first, and a public repo gives them history and blame rather than an
+#     opaque URL.
+#   * The licence server is infrastructure the PRODUCT talks to, not an address
+#     customers should be handed -- the same reason every licensing route now
+#     goes through iterate.ai/lifeboat.
+#
+# The licence server keeps serving these files, so an old URL in somebody's
+# runbook still works; this changes the default, not the availability.
+LIFEBOAT_RAW_BASE="${LIFEBOAT_RAW_BASE:-https://raw.githubusercontent.com/IterateAI/lifeboat-releases/main/install}"
 LIFEBOAT_INSTALL_DIR="${LIFEBOAT_INSTALL_DIR:-$HOME/lifeboat}"
 LIFEBOAT_PORT_DEFAULT="8001"
 LIFEBOAT_MODELS_DIR_DEFAULT="/home/models"
@@ -172,7 +187,11 @@ USAGE
 # Helm install flows against the hosted, rolling chart. Operators run these
 # themselves with their kubeconfig active.
 print_kubernetes_help() {
-  local chart_url="${LIFEBOAT_RAW_BASE}/lifeboat-latest.tgz"
+  # A SEPARATE base from LIFEBOAT_RAW_BASE, because a Helm repository is its
+  # own thing: index.yaml plus the tarball at the URL index.yaml NAMES. The
+  # url is baked into index.yaml at package time, so the two must be published
+  # together and the base cannot simply be swapped after the fact.
+  local chart_url="${LIFEBOAT_CHART_BASE:-https://raw.githubusercontent.com/IterateAI/lifeboat-releases/main/helm}/lifeboat-latest.tgz"
   cat <<HELP
 Lifeboat on Kubernetes (Helm)
 =============================
