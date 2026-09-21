@@ -7,12 +7,12 @@ Both artifact families use the Lifeboat product version, but they are cut
 independently and **the numbers are not expected to match** — a desktop
 version is not a pullable image tag. Desktop builds are cut **per platform**
 as well, so they differ from each other too. As of this writing: container
-images are `2.2.48`; the newest desktop builds are `2.2.50` on Windows,
-`2.2.49` on Apple Silicon and `2.2.46` on Intel macOS and Linux. Container
+images are `2.2.48`; the newest desktop builds are `2.2.50` on Windows and
+Linux, `2.2.49` on Apple Silicon and `2.2.46` on Intel macOS. Container
 releases are listed below; desktop releases have their own notes on each
 release page.
 
-## Desktop 2.2.50 — Linux (x64)
+## Desktop 2.2.50 — Linux
 
 **The Linux build now uses the GPU.** Every previous Linux desktop artifact
 ran every model on the CPU, on any hardware — the build produced no GPU
@@ -32,8 +32,8 @@ Vulkan one.
   It never shipped CUDA and, until now, no GPU support at all. It now says
   what the package does.
 
-arm64 is still at 2.2.46 and does not yet have this; it is built on separate
-hardware.
+Both architectures: `x86_64` enumerates an Intel iGPU and an NVIDIA RTX PRO
+6000 on the same box, `aarch64` enumerates an NVIDIA GB10.
 
 ## Desktop 2.2.50 — Windows
 

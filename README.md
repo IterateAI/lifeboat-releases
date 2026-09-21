@@ -42,9 +42,9 @@ them. Take the newest file for yours:
 | **macOS** Apple Silicon (13+) | `Lifeboat-2.2.49-macos-arm64.dmg` | Metal + MLX |
 | **macOS** Intel (13+) | `Lifeboat-2.2.46-macos-x86_64.dmg` | GGUF on CPU |
 | **Linux** Debian/Ubuntu x64 | `lifeboat-desktop_2.2.50_amd64.deb` | GPU offload via Vulkan |
-| **Linux** Debian/Ubuntu arm64 | `lifeboat-desktop_2.2.46_arm64.deb` | |
+| **Linux** Debian/Ubuntu arm64 | `lifeboat-desktop_2.2.50_arm64.deb` | GPU offload via Vulkan |
 | **Linux** any distro, x64 | `Lifeboat-2.2.50-linux-x86_64.tar.gz` | GPU offload via Vulkan |
-| **Linux** any distro, arm64 | `Lifeboat-2.2.46-linux-aarch64.tar.gz` | |
+| **Linux** any distro, arm64 | `Lifeboat-2.2.50-linux-aarch64.tar.gz` | GPU offload via Vulkan |
 
 Because the platforms are cut separately, the newest build for yours may not
 be on the *latest* release — browse [all releases](../../releases) and take
