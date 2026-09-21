@@ -4,9 +4,61 @@ Release notes for each published build. Binaries are on the
 [releases page](../../releases).
 
 Both artifact families use the Lifeboat product version, but they are cut
-independently and **the two numbers are not expected to match**. Right now they differ: container
-images are `2.2.48` and the newest published desktop build is `2.2.46`. A desktop version is not a pullable image tag. Container releases are
-listed below; desktop releases have their own notes on each release page.
+independently and **the numbers are not expected to match** — a desktop
+version is not a pullable image tag. Desktop builds are cut **per platform**
+as well, so they differ from each other too. As of this writing: container
+images are `2.2.48`; the newest desktop builds are `2.2.50` on Windows,
+`2.2.49` on Apple Silicon and `2.2.46` on Intel macOS and Linux. Container
+releases are listed below; desktop releases have their own notes on each
+release page.
+
+## Desktop 2.2.50 — Linux (x64)
+
+**The Linux build now uses the GPU.** Every previous Linux desktop artifact
+ran every model on the CPU, on any hardware — the build produced no GPU
+backend at all, and said so in two lines of an otherwise successful build log.
+Unpacking the published 2.2.46 tarball shows fourteen CPU backends and no
+Vulkan one.
+
+- **Vulkan offload**, which covers NVIDIA, AMD and Intel with one download —
+  the same choice the Windows build makes. Verified on a box with both an
+  Intel iGPU and an NVIDIA RTX PRO 6000: the shipped artifact enumerates both.
+- The package now **recommends `libvulkan1` and `mesa-vulkan-drivers`**.
+  Install with `apt install ./…deb` rather than `dpkg -i` so they are pulled
+  in; `dpkg` ignores recommends.
+- No GPU, or no Vulkan driver? Nothing breaks. The backend is loaded at
+  runtime, so the CPU backends take over exactly as before.
+- The package description claimed "CUDA on NVIDIA, Vulkan on AMD and Intel".
+  It never shipped CUDA and, until now, no GPU support at all. It now says
+  what the package does.
+
+arm64 is still at 2.2.46 and does not yet have this; it is built on separate
+hardware.
+
+## Desktop 2.2.50 — Windows
+
+**Windows now ships a signed installer.** Previous Windows builds were a
+`.zip` you unpacked by hand; `Lifeboat-2.2.50-setup.exe` installs the app,
+registers it for sign-in start if you ask, and gives you an entry in
+*Settings → Apps* to remove it again.
+
+- **Per-user, so there is no administrator prompt.** The app installs to
+  `%LOCALAPPDATA%\Programs\Lifeboat` and never needs elevation, at install
+  time or afterwards. Models and the database go to `%LOCALAPPDATA%\Lifeboat`
+  and an uninstall asks separately before deleting them.
+- **The installer and both executables are Authenticode-signed**, so
+  SmartScreen has a publisher to show.
+- **Auto-start and the desktop shortcut are separate checkboxes.** They were
+  one: declining auto-start silently also declined the desktop icon, and
+  wanting the icon forced auto-start on.
+- GPU offload uses **Vulkan**, which covers NVIDIA, AMD and Intel with one
+  download. The CPU backends are selected at runtime, so the same build runs
+  from an old Xeon to a current Ryzen.
+- The .NET 8 Desktop Runtime is still required for the tray, and the
+  installer now says so plainly rather than installing an app that appears to
+  do nothing. `lifeboat-core.exe` runs headless without it.
+
+See [`docs/desktop.md`](docs/desktop.md) for the full procedure.
 
 ## 2.2.48 — container images
 

@@ -5,7 +5,7 @@
 
 **Run language models on your own hardware, behind an OpenAI-compatible API.**
 
-[Download](#download) · [Docker](#docker) · [Kubernetes](#kubernetes) · [Documentation](#documentation)
+[Download](#download) · [Desktop](docs/desktop.md) · [Docker](#docker) · [Kubernetes](#kubernetes) · [Documentation](#documentation)
 
 </div>
 
@@ -25,52 +25,103 @@ not public.
 
 ### Desktop — no Docker required
 
-A signed native app with a tray icon. It serves models on whatever the machine
-has: Metal on Apple Silicon, CUDA on NVIDIA, Vulkan on AMD and Intel, and the
-CPU otherwise.
+A native app with a tray icon, on all three platforms. No container runtime
+and no root. It serves models on whatever the machine has: **Metal** on Apple
+Silicon and **Vulkan** on Windows and Linux, which covers NVIDIA, AMD and
+Intel GPUs with one download — and the CPU otherwise.
 
-| Platform | File | Status |
+The macOS and Windows builds are code-signed (macOS also notarized); the Linux
+builds are not, and ship a `SHA256SUMS` instead.
+
+Desktop builds are cut **per platform**, so the newest version differs between
+them. Take the newest file for yours:
+
+| Platform | File | Notes |
 |---|---|---|
-| **macOS** Apple Silicon (13+) | `Lifeboat-2.2.46-macos-arm64.dmg` | **available** — Metal + MLX |
-| **macOS** Intel (13+) | `Lifeboat-2.2.46-macos-x86_64.dmg` | **available** — GGUF only |
-| **Linux** Debian/Ubuntu x64 | `lifeboat-desktop_2.2.46_amd64.deb` | **available** |
-| **Linux** Debian/Ubuntu arm64 | `lifeboat-desktop_2.2.46_arm64.deb` | **available** |
-| **Linux** any distro, x64 | `Lifeboat-2.2.46-linux-x86_64.tar.gz` | **available** |
-| **Linux** any distro, arm64 | `Lifeboat-2.2.46-linux-aarch64.tar.gz` | **available** |
-| **Windows** x64 | `Lifeboat-<ver>-setup.exe` | in progress |
+| **Windows** 10/11 x64 | `Lifeboat-2.2.50-setup.exe` | signed installer, no admin rights needed |
+| **macOS** Apple Silicon (13+) | `Lifeboat-2.2.49-macos-arm64.dmg` | Metal + MLX |
+| **macOS** Intel (13+) | `Lifeboat-2.2.46-macos-x86_64.dmg` | GGUF on CPU |
+| **Linux** Debian/Ubuntu x64 | `lifeboat-desktop_2.2.50_amd64.deb` | GPU offload via Vulkan |
+| **Linux** Debian/Ubuntu arm64 | `lifeboat-desktop_2.2.46_arm64.deb` | |
+| **Linux** any distro, x64 | `Lifeboat-2.2.50-linux-x86_64.tar.gz` | GPU offload via Vulkan |
+| **Linux** any distro, arm64 | `Lifeboat-2.2.46-linux-aarch64.tar.gz` | |
 
-All builds are on the [releases page](../../releases/latest), with SHA-256
-checksums in `SHA256SUMS`.
+Because the platforms are cut separately, the newest build for yours may not
+be on the *latest* release — browse [all releases](../../releases) and take
+the newest file bearing your platform's name.
 
-**Verify what you downloaded.** macOS and Windows builds are code-signed, so
-the OS checks them for you. On Linux, check the checksum yourself:
+**[`docs/desktop.md`](docs/desktop.md) is the full guide** — requirements,
+GPU support, upgrading and uninstalling for each platform.
+
+#### Windows
+
+Download `Lifeboat-<version>-setup.exe` and double-click it. That is the whole
+procedure.
+
+It installs **for you rather than for the machine**, so there is no
+administrator prompt: the app goes to `%LOCALAPPDATA%\Programs\Lifeboat` and
+your models to `%LOCALAPPDATA%\Lifeboat`. *Start at sign-in* and *desktop
+shortcut* are separate checkboxes; neither implies the other.
+
+One prerequisite, which the installer checks for but cannot install:
+
+```powershell
+winget install --id Microsoft.DotNet.DesktopRuntime.8 -e
+```
+
+The tray is a .NET application and does nothing without it. `lifeboat-core.exe`
+runs headless and does not need it.
+
+> The `curl … | bash` line in the welcome email is the **Docker** installer and
+> is for Linux hosts. PowerShell has no `bash`, so it fails with
+> *"The term 'bash' is not recognized"*. On Windows, use `setup.exe`.
+
+#### macOS
+
+Open the `.dmg`, drag **Lifeboat** to **Applications**, and launch it.
+
+The build is signed with a Developer ID, **notarized by Apple and stapled**, so
+there is no security warning and no need to right-click → Open — offline too,
+since the ticket travels inside the file. Lifeboat lives in the **menu bar**,
+not the Dock: there is no Dock icon and no window on launch.
+
+#### Linux
+
+Debian, Ubuntu and derivatives:
+
+```sh
+sudo apt install ./lifeboat-desktop_2.2.50_amd64.deb
+```
+
+Use `apt install ./file.deb`, not `dpkg -i` — the tray binding and the Vulkan
+loader are *recommended* packages and `dpkg` will not pull them in.
+
+Any other distribution — the tarball unpacks to the same layout, rooted at `/`:
+
+```sh
+sudo tar -C / -xzf Lifeboat-2.2.50-linux-x86_64.tar.gz
+```
+
+Either way you get `/opt/lifeboat` plus two commands on `PATH`:
+**`lifeboat-core`** (the server and CLI, runs headless) and **`lifeboat-tray`**.
+Needs **glibc 2.31+** (Debian 11+, Ubuntu 20.04+, RHEL 9+). For GPU offload
+install `libvulkan1` and your vendor's Vulkan driver; for the tray icon on
+GNOME, `gir1.2-ayatanaappindicator3-0.1` — without an AppIndicator it silently
+does not render.
+
+```sh
+lifeboat-core doctor     # what this machine can actually run, and why
+```
+
+#### Verifying a download
+
+macOS and Windows builds are code-signed, so the OS checks them for you — that
+is the stronger check. Linux builds are not signed; where a release publishes
+a `SHA256SUMS`, check against it:
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
 ```
-
-**Installing on Linux** — Debian and Ubuntu:
-
-```sh
-sudo dpkg -i lifeboat-desktop_2.2.46_amd64.deb
-```
-
-Any other distro — the tarball unpacks to the same layout, rooted at `/`:
-
-```sh
-sudo tar -C / -xzf Lifeboat-2.2.46-linux-x86_64.tar.gz
-```
-
-Either way you get `/opt/lifeboat` plus two commands on `PATH`:
-**`lifeboat-core`** (the server and CLI) and **`lifeboat-tray`**. Needs
-**glibc 2.31+** (Debian 11+, Ubuntu 20.04+, RHEL 9+). For the tray icon on
-GNOME, also install `gir1.2-ayatanaappindicator3-0.1` — without an
-AppIndicator it silently does not render. `lifeboat-core` runs headless with
-none of it.
-
-**On macOS**, the build is signed with a Developer ID, **notarized by Apple and
-stapled** — double-click to launch, no security warning, and it works offline
-because the ticket travels with the file.
 
 <details>
 <summary><b>System requirements</b></summary>
@@ -78,8 +129,8 @@ because the ticket travels with the file.
 | | Minimum | Recommended |
 |---|---|---|
 | macOS | 13 Ventura, Apple Silicon or Intel | Apple Silicon, 16 GB+ |
-| Windows | 10 (build 17763) x64, .NET 8 Desktop Runtime | 16 GB+, any GPU |
-| Linux | glibc 2.31+, x64 or arm64 | 16 GB+, Vulkan drivers for GPU offload |
+| Windows | 10 build 17763 x64, .NET 8 Desktop Runtime | 16 GB+, any GPU with a Vulkan driver |
+| Linux | glibc 2.31+, x64 or arm64 | 16 GB+, `libvulkan1` + vendor driver |
 | Disk | 2 GB for the app | plus whatever your models need |
 
 Decode speed is limited by memory bandwidth, not by core count. As a rule of
@@ -87,6 +138,10 @@ thumb on a machine with **8 GB** of RAM: a 1.5B–4B model at 4-bit is
 comfortable, 8B is the ceiling, and 14B will not fit. The app's **Doctor**
 (tray → Show Log, or `lifeboat-core doctor`) reports the limits for your actual
 machine.
+
+**NPUs and Intel XPU are not used.** An "AI PC" NPU sits idle under Lifeboat:
+there is no inference path to it, and it shares system memory, so it would not
+lift the bandwidth ceiling that actually governs decode speed.
 
 </details>
 
@@ -276,6 +331,8 @@ The full payload, byte for byte, is documented in
 
 | | |
 |---|---|
+| [Desktop](docs/desktop.md) | installing on Windows, macOS and Linux; GPU support; upgrades |
+| [Docker](docs/docker.md) | image tags, host requirements, sizing, upgrades |
 | [User Guide](docs/) | installation, configuration, every console page |
 | [API Reference](docs/) | the full `/v1/*` surface, OpenAPI and Postman |
 | [Telemetry](docs/telemetry.md) | exactly what is sent, and what never is |
