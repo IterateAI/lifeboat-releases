@@ -36,6 +36,40 @@
 
 set -euo pipefail
 
+# --- Windows is a different product, and saying so beats failing oddly ------
+# On Windows this script is either unreachable (PowerShell has no `bash`, so
+# the documented curl-pipe-bash one-liner dies with "The term 'bash' is not
+# recognized") or it runs under Git Bash / MSYS and fails later on docker,
+# systemd and /proc in ways that read as a broken installer. The supported
+# Windows path is the native desktop app, so name it. WSL is NOT caught here:
+# it reports Linux and genuinely works.
+case "$(uname -s 2>/dev/null)" in
+    MINGW*|MSYS*|CYGWIN*)
+        cat >&2 <<'WINEOF'
+[X] This installer is for Linux. It cannot install Lifeboat on Windows.
+
+    Windows has a native app instead -- no Docker, no WSL:
+
+      https://github.com/IterateAI/lifeboat-releases/releases/latest
+      -> Lifeboat-<version>-setup.exe
+
+    Download it and run it. It is a signed installer: Start-menu entry,
+    optional start-at-sign-in, and an uninstaller. It also checks for the free
+    .NET 8 Desktop Runtime (https://dotnet.microsoft.com/download/dotnet/8.0)
+    and tells you if it is missing, rather than installing an app that then
+    never appears.
+
+    Activate from the console's License page -- the desktop app has no
+    --license-key flag.
+
+    (Running under WSL2? That reports as Linux and this installer works
+    there; you are seeing this because the shell is Git Bash or MSYS.)
+WINEOF
+        exit 1
+        ;;
+esac
+
+
 # ---------------------------------------------------------------------
 # Config / defaults
 # ---------------------------------------------------------------------
