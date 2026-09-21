@@ -40,7 +40,7 @@ them. Take the newest file for yours:
 |---|---|---|
 | **Windows** 10/11 x64 | `Lifeboat-2.2.50-setup.exe` | signed installer, no admin rights needed |
 | **macOS** Apple Silicon (13+) | `Lifeboat-2.2.50-macos-arm64.dmg` | Metal + MLX |
-| **macOS** Intel (13+) | `Lifeboat-2.2.46-macos-x86_64.dmg` | GGUF, no MLX |
+| **macOS** Intel (13+) | `Lifeboat-2.2.50-macos-x86_64.dmg` | GGUF, no MLX |
 | **Linux** Debian/Ubuntu x64 | `lifeboat-desktop_2.2.50_amd64.deb` | GPU offload via Vulkan |
 | **Linux** Debian/Ubuntu arm64 | `lifeboat-desktop_2.2.50_arm64.deb` | GPU offload via Vulkan |
 | **Linux** any distro, x64 | `Lifeboat-2.2.50-linux-x86_64.tar.gz` | GPU offload via Vulkan |
