@@ -70,7 +70,14 @@ services:
       - render
 
     ports:
-      - "${LIFEBOAT_CONTROL_PORT:-8001}:8001"
+      # Both halves follow LIFEBOAT_CONTROL_PORT, because it is ALSO passed
+      # into the container as the port the control plane listens on. Pinning
+      # the container side to a literal 8001 desynchronised the two: setting
+      # LIFEBOAT_CONTROL_PORT=8098 moved the listener to 8098 while the
+      # mapping still pointed at 8001, giving a container that is up, failing
+      # its healthcheck, and unreachable. LIFEBOAT_PUBLISH_PORT overrides the
+      # HOST side alone, for publishing on a different port than the listener.
+      - "${LIFEBOAT_PUBLISH_PORT:-${LIFEBOAT_CONTROL_PORT:-8001}}:${LIFEBOAT_CONTROL_PORT:-8001}"
       # - "${LIFEBOAT_AGENT_PORT:-8002}:8002"
 
     volumes:
@@ -91,7 +98,16 @@ services:
       # Optional: force a gfx target when ROCm misidentifies a part. Leave
       # blank unless AMD support tells you otherwise — an override that does
       # not match the silicon produces wrong kernels, not a clear error.
-      HSA_OVERRIDE_GFX_VERSION: "${HSA_OVERRIDE_GFX_VERSION:-}"
+      # NOTE the bare key with no value. That is deliberate and load-bearing:
+      # compose then takes the value from the host environment and OMITS the
+      # variable entirely when it is unset. Writing it the usual way,
+      #   HSA_OVERRIDE_GFX_VERSION: "${HSA_OVERRIDE_GFX_VERSION:-}"
+      # sets it to the EMPTY STRING, which is not the same thing at all: ROCm
+      # parses "" as an invalid gfx override and enumerates ZERO agents, so
+      # torch.cuda.is_available() is False and the entrypoint's GPU check
+      # fails with "CUDA is not available" on a perfectly good MI210. Measured
+      # on gfx90a: variable absent -> True, variable empty -> False.
+      HSA_OVERRIDE_GFX_VERSION:
 
       # ---- Admin bootstrap (required on first start) ----------------
       LIFEBOAT_ADMIN_EMAIL: "${LIFEBOAT_ADMIN_EMAIL:-admin@iterate.ai}"
@@ -238,7 +254,7 @@ services:
     ipc: host
 
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8001/api/version"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:${LIFEBOAT_CONTROL_PORT:-8001}/api/version"]
       interval: 30s
       timeout: 5s
       start_period: 90s
