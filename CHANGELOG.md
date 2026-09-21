@@ -13,15 +13,18 @@ release page.
 
 ## Desktop 2.2.50 — macOS (Apple Silicon and Intel)
 
-**The Apple Silicon build had the wrong engine, and this release fixes it.**
-2.2.49 shipped an arm64 app containing an **x86_64** inference engine, which
-an arm64 process cannot load — so GGUF models could not be served on Apple
-Silicon in that release. MLX models were unaffected, which is why it was easy
-to miss: the app worked until you picked a GGUF model.
+**The Apple Silicon build shipped the wrong engine, and this release fixes
+it.** 2.2.49 contained an arm64 app with an **x86_64** inference engine. The
+engine runs as its own process, so on a Mac that has Rosetta it still worked —
+measured on an M4 Max, about 13% slower to generate, with the GPU still doing
+the work. On an Apple Silicon Mac **without** Rosetta installed it cannot
+start at all.
 
-- The engine is rebuilt for arm64 with Metal. Verified from the shipped disk
-  image: it reports `Apple M4 Max` as an available Metal device, where the
-  2.2.49 engine could not be loaded at all.
+So 2.2.49 is degraded rather than broken, and upgrading is worth doing, but it
+is not the emergency an earlier version of this note implied.
+
+- The engine is rebuilt natively for arm64 with Metal, and ships the Apple
+  CPU kernels (`apple_m1`/`m2_m3`/`m4`) instead of the Intel ones.
 - Signed with a Developer ID, notarized by Apple and stapled, so it opens with
   no warning and works offline.
 - MLX is bundled as before, so both GGUF and MLX run on the GPU.
@@ -31,8 +34,9 @@ to miss: the app worked until you picked a GGUF model.
   release, which carries six published advisories. The Intel build has no
   MLX (Apple Silicon only) and is correspondingly smaller.
 
-**If you are on 2.2.49 and your models fail to start, this is why — upgrade.**
-Nothing else on your machine needs changing; models and settings are untouched.
+**If you are on 2.2.49 and your models will not start at all, you are on an
+Apple Silicon Mac without Rosetta — upgrading fixes it.** Otherwise the
+upgrade buys you native speed. Models and settings are untouched either way.
 
 ## Desktop 2.2.50 — Linux
 
