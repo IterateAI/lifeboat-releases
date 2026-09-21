@@ -134,7 +134,7 @@ icon in the menu bar at the top right.
 |---|---|
 | macOS | 13 Ventura or newer |
 | Apple Silicon | GPU offload via Metal; MLX and GGUF models both run on the GPU |
-| Intel | GGUF only, on the CPU — there is no Metal path for these models and no MLX |
+| Intel | GGUF only — no MLX. The build ships the Metal backend, so the GPU is used where it supports it; otherwise the CPU. `lifeboat-core doctor` reports which. |
 | Disk | ~400 MB for the app, plus your models |
 
 Apple Silicon is much the better machine for this: the GPU and the CPU share
@@ -251,7 +251,7 @@ which is why there is no separate CUDA download.
 | Windows | Vulkan | NVIDIA, AMD, Intel (including integrated) |
 | Linux | Vulkan | NVIDIA, AMD, Intel (including integrated) |
 | macOS, Apple Silicon | Metal | the built-in GPU |
-| macOS, Intel | none | CPU only |
+| macOS, Intel | Metal, if the GPU supports it | the built-in or discrete GPU; falls back to the CPU |
 
 The GPU backend is loaded at runtime, so a machine with no Vulkan driver or no
 capable GPU simply uses the CPU — nothing fails, it is just slower. On Linux

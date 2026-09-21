@@ -7,10 +7,28 @@ Both artifact families use the Lifeboat product version, but they are cut
 independently and **the numbers are not expected to match** — a desktop
 version is not a pullable image tag. Desktop builds are cut **per platform**
 as well, so they differ from each other too. As of this writing: container
-images are `2.2.48`; the newest desktop builds are `2.2.50` on Windows and
-Linux, `2.2.49` on Apple Silicon and `2.2.46` on Intel macOS. Container
+images are `2.2.48`; the newest desktop builds are `2.2.50` on Windows,
+Linux and Apple Silicon, and `2.2.46` on Intel macOS. Container
 releases are listed below; desktop releases have their own notes on each
 release page.
+
+## Desktop 2.2.50 — macOS (Apple Silicon)
+
+**The Apple Silicon build had the wrong engine, and this release fixes it.**
+2.2.49 shipped an arm64 app containing an **x86_64** inference engine, which
+an arm64 process cannot load — so GGUF models could not be served on Apple
+Silicon in that release. MLX models were unaffected, which is why it was easy
+to miss: the app worked until you picked a GGUF model.
+
+- The engine is rebuilt for arm64 with Metal. Verified from the shipped disk
+  image: it reports `Apple M4 Max` as an available Metal device, where the
+  2.2.49 engine could not be loaded at all.
+- Signed with a Developer ID, notarized by Apple and stapled, so it opens with
+  no warning and works offline.
+- MLX is bundled as before, so both GGUF and MLX run on the GPU.
+
+**If you are on 2.2.49 and your models fail to start, this is why — upgrade.**
+Nothing else on your machine needs changing; models and settings are untouched.
 
 ## Desktop 2.2.50 — Linux
 
