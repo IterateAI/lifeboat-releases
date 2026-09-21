@@ -38,7 +38,7 @@ them. Take the newest file for yours:
 
 | Platform | File | Notes |
 |---|---|---|
-| **Windows** 10/11 x64 | `Lifeboat-2.2.50-setup.exe` | signed installer, no admin rights needed |
+| **Windows** 10/11 x64 | `Lifeboat-2.2.51-setup.exe` | signed installer, no admin rights needed |
 | **macOS** Apple Silicon (13+) | `Lifeboat-2.2.50-macos-arm64.dmg` | Metal + MLX |
 | **macOS** Intel (13+) | `Lifeboat-2.2.50-macos-x86_64.dmg` | GGUF, no MLX |
 | **Linux** Debian/Ubuntu x64 | `lifeboat-desktop_2.2.50_amd64.deb` | GPU offload via Vulkan |

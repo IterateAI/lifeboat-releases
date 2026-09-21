@@ -7,9 +7,23 @@ Both artifact families use the Lifeboat product version, but they are cut
 independently and **the numbers are not expected to match** — a desktop
 version is not a pullable image tag. Desktop builds are cut **per platform**
 as well, so they differ from each other too. As of this writing: container
-images are `2.2.48`; every desktop platform is now at `2.2.50`. Container
+images are `2.2.48`; desktop is `2.2.51` on Windows and `2.2.50` everywhere else — 2.2.51 fixed a Windows-only defect, so the other platforms were not rebuilt. Container
 releases are listed below; desktop releases have their own notes on each
 release page.
+
+## Desktop 2.2.51 — Windows only
+
+**No inference server could be started, or stopped, on Windows.** Every attempt
+to start one failed before the engine was even launched, because the control
+plane used process APIs that exist only on Linux and macOS. Stopping a server
+would have failed for the same reason, and a background loop retried one of
+those calls every two seconds, filling the log.
+
+Also fixed: the per-server log file resolved to a directory that need not exist
+on Windows.
+
+**Windows only.** Every change is a platform guard, so macOS and Linux behave
+exactly as before and stay on 2.2.50 — there is no 2.2.51 for them.
 
 ## Desktop 2.2.50 — macOS (Apple Silicon and Intel)
 
