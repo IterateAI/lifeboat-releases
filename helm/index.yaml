@@ -2,8 +2,56 @@ apiVersion: v1
 entries:
   lifeboat:
   - apiVersion: v2
+    appVersion: 2.2.53
+    created: "2026-09-23T21:54:43.465278+05:30"
+    description: 'Lifeboat — high-performance LLM inference server: control plane,
+      management UI and inference engine in a single GPU-enabled container, by iterate.ai. '
+    digest: d93232896190bb33f77cdf81c5cb5269f10c57fb3e9e463ffe3afb9d174017f0
+    home: https://iterate.ai/lifeboat
+    icon: https://cdn.prod.website-files.com/66faf094459c16fad4ecb09a/6a750aa136518d956718d7d5_Lifboat-Logo-Black.png
+    keywords:
+    - llm
+    - inference
+    - agentic
+    - gpu
+    - nvidia
+    maintainers:
+    - email: arul@iterate.ai
+      name: iterate.ai
+    name: lifeboat
+    sources:
+    - https://iterate.ai/lifeboat
+    type: application
+    urls:
+    - https://raw.githubusercontent.com/IterateAI/lifeboat-releases/main/helm/lifeboat-2.2.53.tgz
+    version: 2.2.53
+  - apiVersion: v2
+    appVersion: 2.2.53
+    created: "2026-09-23T21:54:43.466031+05:30"
+    description: 'Lifeboat — high-performance LLM inference server: control plane,
+      management UI and inference engine in a single GPU-enabled container, by iterate.ai. '
+    digest: d93232896190bb33f77cdf81c5cb5269f10c57fb3e9e463ffe3afb9d174017f0
+    home: https://iterate.ai/lifeboat
+    icon: https://cdn.prod.website-files.com/66faf094459c16fad4ecb09a/6a750aa136518d956718d7d5_Lifboat-Logo-Black.png
+    keywords:
+    - llm
+    - inference
+    - agentic
+    - gpu
+    - nvidia
+    maintainers:
+    - email: arul@iterate.ai
+      name: iterate.ai
+    name: lifeboat
+    sources:
+    - https://iterate.ai/lifeboat
+    type: application
+    urls:
+    - https://raw.githubusercontent.com/IterateAI/lifeboat-releases/main/helm/lifeboat-latest.tgz
+    version: 2.2.53
+  - apiVersion: v2
     appVersion: 2.2.49
-    created: "2026-09-18T14:42:50.361044+05:30"
+    created: "2026-09-23T21:54:43.464485+05:30"
     description: 'Lifeboat — high-performance LLM inference server: control plane,
       management UI and inference engine in a single GPU-enabled container, by iterate.ai. '
     digest: bbe450cff1247afd2e9ecfe6a46c1da8ddfeecab80a0643294ce32253c18ccf7
@@ -26,32 +74,8 @@ entries:
     - https://raw.githubusercontent.com/IterateAI/lifeboat-releases/main/helm/lifeboat-2.2.49.tgz
     version: 2.2.49
   - apiVersion: v2
-    appVersion: 2.2.49
-    created: "2026-09-18T14:42:50.362279+05:30"
-    description: 'Lifeboat — high-performance LLM inference server: control plane,
-      management UI and inference engine in a single GPU-enabled container, by iterate.ai. '
-    digest: bbe450cff1247afd2e9ecfe6a46c1da8ddfeecab80a0643294ce32253c18ccf7
-    home: https://iterate.ai/lifeboat
-    icon: https://cdn.prod.website-files.com/66faf094459c16fad4ecb09a/6a750aa136518d956718d7d5_Lifboat-Logo-Black.png
-    keywords:
-    - llm
-    - inference
-    - agentic
-    - gpu
-    - nvidia
-    maintainers:
-    - email: arul@iterate.ai
-      name: iterate.ai
-    name: lifeboat
-    sources:
-    - https://iterate.ai/lifeboat
-    type: application
-    urls:
-    - https://raw.githubusercontent.com/IterateAI/lifeboat-releases/main/helm/lifeboat-latest.tgz
-    version: 2.2.49
-  - apiVersion: v2
     appVersion: 2.2.46
-    created: "2026-09-18T14:42:50.360429+05:30"
+    created: "2026-09-23T21:54:43.463773+05:30"
     description: 'Lifeboat — high-performance LLM inference server: control plane,
       management UI and inference engine in a single GPU-enabled container, by iterate.ai. '
     digest: 3d696f82e473da885dba101fa16d25d5f28511141339a0ade0ba4d197018886d
@@ -75,7 +99,7 @@ entries:
     version: 2.2.46
   - apiVersion: v2
     appVersion: 2.2.40
-    created: "2026-09-18T14:42:50.359333+05:30"
+    created: "2026-09-23T21:54:43.462942+05:30"
     description: 'Lifeboat — high-performance LLM inference server: control plane,
       management UI and inference engine in a single GPU-enabled container, by iterate.ai. '
     digest: ec5d255b2ff48b2c68df3dd53beca273ef05b8923a02d201a8c28f5a40ff1086
@@ -97,4 +121,4 @@ entries:
     urls:
     - https://raw.githubusercontent.com/IterateAI/lifeboat-releases/main/helm/lifeboat-2.2.40.tgz
     version: 2.2.40
-generated: "2026-09-18T14:42:50.358411+05:30"
+generated: "2026-09-23T21:54:43.461324+05:30"
