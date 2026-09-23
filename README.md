@@ -164,6 +164,30 @@ only. The desktop app will refuse a safetensors download on macOS or Windows
 
 ---
 
+## pip — no Docker, no GPU
+
+```sh
+pip install lifeboat
+lifeboat engine install
+lifeboat up          # console on http://127.0.0.1:8001
+```
+
+The quickest way to evaluate Lifeboat: the console, model registry, load
+balancer and the full OpenAI-compatible API, with no container runtime and no
+accelerator. `lifeboat serve <model>` serves one model without the console, and
+`lifeboat doctor` reports what the machine can run before anything downloads.
+
+**Python 3.10–3.13**, published for macOS (Apple Silicon), Linux x86-64 and
+ARM64, and Windows x64 — [pypi.org/project/lifeboat](https://pypi.org/project/lifeboat/),
+[quickstart](https://docs.iterate.ai/lifeboat/getting-started/pip-quickstart/).
+
+It carries the **GGUF engine only**, so the 2x concurrency, FP8 KV cache,
+speculative decoding and safetensors weights stay with the container image.
+Use the container on **Intel Macs** (no wheel is published) and on **RHEL 9 and
+its rebuilds** — Rocky, AlmaLinux, Oracle Linux — whose system C++ runtime is
+older than the prebuilt engine needs. Those also ship Python 3.9 as `python3`,
+below the floor; install 3.12 first.
+
 ## Docker
 
 The fastest path on a Linux GPU host. One command:
