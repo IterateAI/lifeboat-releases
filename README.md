@@ -336,6 +336,7 @@ The full payload, byte for byte, is documented in
 | [User Guide](docs/) | installation, configuration, every console page |
 | [API Reference](docs/) | the full `/v1/*` surface, OpenAPI and Postman |
 | [Telemetry](docs/telemetry.md) | exactly what is sent, and what never is |
+| [Benchmarks](benchmark/) | the harness and the raw results behind our published figures |
 | [Security](SECURITY.md) | reporting a vulnerability, signing keys |
 | [Changelog](CHANGELOG.md) | what changed in each release |
 
