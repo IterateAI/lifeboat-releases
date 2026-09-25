@@ -6,10 +6,44 @@ Release notes for each published build. Binaries are on the
 Both artifact families use the Lifeboat product version, but they are cut
 independently and **the numbers are not expected to match** — a desktop
 version is not a pullable image tag. Desktop builds are cut **per platform**
-as well, so they differ from each other too. As of this writing: container
-images are `2.2.48`; desktop is `2.2.51` on Windows and `2.2.50` everywhere else — 2.2.51 fixed a Windows-only defect, so the other platforms were not rebuilt. Container
+as well, so they differ from each other too. There is a third family now -- the **pip package**, which
+versions independently again. As of this writing: container images are `2.2.53`;
+pip is `2.2.55`; desktop is `2.2.51` on Windows and `2.2.50` everywhere else — 2.2.51 fixed a Windows-only defect, so the other platforms were not rebuilt. Container
 releases are listed below; desktop releases have their own notes on each
 release page.
+
+## pip 2.2.55
+
+`pip install lifeboat` — see the [quickstart](https://docs.iterate.ai/lifeboat/getting-started/pip-quickstart/).
+
+- **The serving engine now runs on older Linux, which is most of it.** Previously
+  it needed Ubuntu 24.04 or newer, so on Ubuntu 22.04, Debian 12, the RHEL 9
+  family and most edge hardware it installed and then could not start. Lifeboat
+  now publishes its own builds against a much older system runtime; one download
+  works on Linux going back to 2018, on 64-bit Intel/AMD and ARM.
+- **Small and embedded hardware is a supported target.** Every processor variant
+  is carried and chosen at run time, so one download serves a Raspberry Pi 4/5,
+  a mini-PC or thin client, and low-power embedded chips with no modern vector
+  instructions. Integrated graphics are used automatically when present.
+- **NVIDIA Jetson boards get a CUDA engine automatically** instead of the general
+  Vulkan one — roughly 2x on an Orin Nano Super (47 → 88 tok/s single request,
+  112 → 180 under concurrency). Nothing to configure.
+- **Concurrent slots are sized from the machine** rather than fixed at four. On a
+  64-core host that took aggregate throughput from 630 to 1330 tok/s. Small
+  boards are unchanged, since slots cost cache memory there.
+- **`lifeboat doctor` reports what the machine can run** — cores, memory, the
+  accelerator found and the largest model it can comfortably serve, before any
+  weights are downloaded. It also names a GPU that is present but unreachable by
+  the installed engine, which otherwise looks like everything working while
+  inference quietly runs on the CPU.
+
+Measured against other servers on the same hardware:
+[benchmark/comparison](benchmark/comparison).
+
+## pip 2.2.54
+
+- **Apple Silicon Macs can serve safetensors natively** via `pip install
+  'lifeboat[mlx]'`. GGUF remains the default; MLX is a second engine beside it.
 
 ## Desktop 2.2.51 — Windows only
 

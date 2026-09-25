@@ -23,6 +23,37 @@ not public.
 
 ## Download
 
+### pip — no Docker, no GPU required
+
+```sh
+pip install lifeboat
+lifeboat engine install
+lifeboat up          # console on http://127.0.0.1:8001
+```
+
+The quickest way to evaluate Lifeboat, and how to run it on small hardware:
+console, model registry, load balancer and the full OpenAI-compatible API, with
+no container and no accelerator. Python 3.10–3.13 on macOS (Apple Silicon),
+Linux x86-64/ARM64 and Windows x64 —
+[PyPI](https://pypi.org/project/lifeboat/),
+[quickstart](https://docs.iterate.ai/lifeboat/getting-started/pip-quickstart/).
+
+**Edge and embedded hardware is a first-class target.** The Linux engines link
+an old system runtime and carry every processor variant, chosen at run time, so
+one download runs on distributions going back to 2018 and from an Atom to a
+current server — Raspberry Pi 4/5, mini-PCs and thin clients included. NVIDIA
+Jetson boards receive a CUDA build automatically. `lifeboat doctor` reports the
+board's cores, memory, GPU and the largest model it can serve before you
+download any weights.
+
+It carries the **GGUF engine only** — safetensors, FP8 and the throughput
+optimizations stay with the container image.
+
+Measured against other inference servers on the same hardware and the same
+model file, out of the box: **1.94x** llama.cpp on a 64-core server, **2.01x**
+ollama on a Jetson, **1.48x** on a Mac. Harness and raw results:
+[`benchmark/comparison`](benchmark/comparison).
+
 ### Desktop — no Docker required
 
 A native app with a tray icon, on all three platforms. No container runtime
