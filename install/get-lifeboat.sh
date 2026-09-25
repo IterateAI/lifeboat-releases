@@ -439,7 +439,20 @@ EOS
   log_hint "Needs Python 3.10+. Check what the board can run: lifeboat doctor"
   log_hint "Sizing and measured throughput: https://docs.iterate.ai/lifeboat/platform/performance/"
   printf '\n'
-  log_hint "To install a container image here anyway: re-run with --lite"
+
+  # Name the flag that is actually right for THIS host. A Jetson or a Pi
+  # wants Lite, but the "tiny" class is only a memory/core threshold -- a
+  # small host can still hold a real data-center GPU, and telling that
+  # operator to force Lite would cost them the tensor engine.
+  local anyway="--lite"
+  if [ "$EDGE_CLASS" = "tiny" ]; then
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+      anyway="--nvidia"
+    elif [ -e /dev/kfd ]; then
+      anyway="--amd"
+    fi
+  fi
+  log_hint "To install a container image here anyway: re-run with ${anyway}"
   return 0
 }
 
