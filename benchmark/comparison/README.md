@@ -110,10 +110,19 @@ Publishing only the wins would make everything above worth less, so:
   give each request 8x the context window. At matched settings the two are
   within 0.3%. We think the bigger default window is the right call for real
   prompts, but it is a trade and it is measurable.
-- **The pip package has no GPU path on AMD data-center cards.** On the MI210
-  host above, the engine runs on the CPU — which is why that row is labelled a
-  CPU comparison. The ROCm **container image** is the GPU path on AMD, and is
-  not what was measured there.
+- **The EPYC row above is a CPU comparison**, and was taken when the pip
+  package had no GPU path on AMD data-center cards at all. That gap is now
+  closed — as of 2.2.56 an Instinct card gets a ROCm engine automatically — but
+  the numbers above predate it and are left as measured rather than restated.
+
+  The cause is worth knowing if you run Instinct hardware: the portable engine
+  reaches GPUs through Vulkan, whose open driver targets *graphics* parts, and
+  a CDNA compute card has no graphics engine, so it was never enumerated at
+  all. Measured on that MI210, the ROCm engine is **1.89x** faster on a single
+  request (375.4 against 198.2 tok/s). But at high concurrency the 64-core CPU
+  was still **higher** in aggregate (1330 against 883 tok/s) for a 0.5B model —
+  a small model parallelises extremely well across many cores, and the GPU's
+  advantage there is latency. Its margin grows with model size.
 - **Single-stream decode is bounded by memory bandwidth**, not by any software
   here. Where two rows are close on a single request, that is physics, and no
   amount of serving-layer work changes it. The place a serving layer earns its
