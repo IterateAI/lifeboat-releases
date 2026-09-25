@@ -82,6 +82,27 @@ a serving one. Lifeboat now publishes a CUDA build of its engine for Tegra
 boards and `lifeboat engine install` selects it automatically, which is what
 the numbers above are taken on. Nothing to configure.
 
+### AMD Instinct MI210 (ROCm), Qwen2.5-0.5B Q4_K_M
+
+| System | Single-stream | Peak | at | TTFT p50 |
+|---|---|---|---|---|
+| **Lifeboat 2.2.56** | 379.7 tok/s | **1483.0 tok/s** | c=32 | 10 ms |
+| llama.cpp | 370.2 tok/s | 857.9 tok/s | c=4 | 8 ms |
+| ollama 0.34.4 | 368.7 tok/s | 368.9 tok/s | c=32 | 8 ms |
+
+**1.73x llama.cpp and 4.02x ollama** on aggregate throughput, all three on the
+same ROCm engine and the same model file. Single-stream the three are within
+3%, which is again the correct result for one shared kernel — the entire
+difference is how many requests each will run at once. ollama does not rise
+with concurrency at all on its defaults.
+
+This row exists because of a gap this comparison found: until 2.2.56 the pip
+package had **no GPU path at all** on Instinct cards. The portable engine
+reaches GPUs through Vulkan, whose open driver targets graphics parts, and a
+CDNA compute card has no graphics engine — so it was never enumerated and
+everything ran on the CPU. Lifeboat now ships a ROCm engine and selects it
+automatically.
+
 ### Apple M4 Max (Metal), Qwen3-4B-Instruct Q4_K_XL
 
 | System | Single-stream | Peak | at | TTFT p50 |
@@ -110,10 +131,10 @@ Publishing only the wins would make everything above worth less, so:
   give each request 8x the context window. At matched settings the two are
   within 0.3%. We think the bigger default window is the right call for real
   prompts, but it is a trade and it is measurable.
-- **The EPYC row above is a CPU comparison**, and was taken when the pip
-  package had no GPU path on AMD data-center cards at all. That gap is now
-  closed — as of 2.2.56 an Instinct card gets a ROCm engine automatically — but
-  the numbers above predate it and are left as measured rather than restated.
+- **The EPYC row is a CPU comparison** on the same host as the MI210 row, taken
+  before 2.2.56 gave Instinct cards a GPU path. Both are kept: they are the
+  same machine measured on its processor and on its accelerator, which is a
+  genuinely useful pair rather than a stale number and a fresh one.
 
   The cause is worth knowing if you run Instinct hardware: the portable engine
   reaches GPUs through Vulkan, whose open driver targets *graphics* parts, and
