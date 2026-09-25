@@ -1,5 +1,9 @@
 # Lifeboat benchmarks
 
+> Comparing Lifeboat against **other inference servers** on the same
+> hardware — llama.cpp and ollama, on a Mac, a 64-core server and a
+> Jetson — is in [`comparison/`](comparison/).
+
 The harness behind the concurrency and throughput figures we publish, plus the
 raw result files those figures were read out of. Everything here is meant to be
 checked rather than taken on trust, so this README is explicit about what the
