@@ -114,7 +114,9 @@ MIN_COMPOSE_MAJOR=2
 MIN_COMPOSE_MINOR=21
 MIN_DRIVER_MAJOR=580
 MIN_GPU_VRAM_GB=8
-GPU_VENDOR=""            # nvidia | amd — auto-detected, or forced by --amd/--nvidia
+GPU_VENDOR=""            # nvidia | amd | lite — auto-detected, or forced by a flag
+GPU_VENDOR_FORCED=""     # set when --nvidia/--amd/--lite was given, so the edge
+                         # routing below advises and never overrides
 
 # CLI flags (mutated by parse_args)
 DO_CHECK_ONLY="false"
@@ -194,6 +196,7 @@ Usage: $(basename "$0") [OPTIONS]
                                MI300X/MI325X, MI350X/MI355X). Auto-detected from
                                /dev/kfd when nvidia-smi is absent; this forces it.
   --nvidia, --cuda             Force the NVIDIA/CUDA variant (the default).
+                               Also overrides the edge-device routing below.
   --lite, --cpu                Install the Lite image: CPU-only hosts,
                                integrated or older GPUs, mini-PCs and NUCs.
                                No data-center GPU required. Auto-selected when
@@ -207,6 +210,13 @@ Usage: $(basename "$0") [OPTIONS]
                                and exit (this installer itself is Docker
                                Compose only; k8s installs use Helm directly).
   -h, --help                   Show this message.
+
+Edge devices:
+  On a Jetson, a Raspberry Pi class board, or any host with 8 GB or less and
+  few cores, this installer prints the pip route and stops rather than pulling
+  a container image the board cannot use well. Any of --nvidia/--amd/--lite
+  overrides that and installs the image you name. Measured throughput and
+  sizing per board: https://docs.iterate.ai/lifeboat/platform/performance/
 
 Environment:
   GIT_REF=<branch|tag>         Pull docker-compose.yaml + .env.example
@@ -284,9 +294,9 @@ parse_args() {
       --license-key)        LICENSE_KEY="$2"; shift 2 ;;
       --confidential-computing) CONFIDENTIAL_COMPUTING="$2"; shift 2 ;;
       --install-dir)        LIFEBOAT_INSTALL_DIR="$2"; shift 2 ;;
-      --amd|--rocm)         GPU_VENDOR="amd"; shift ;;
-      --lite|--cpu)         GPU_VENDOR="lite"; shift ;;
-      --nvidia|--cuda)      GPU_VENDOR="nvidia"; shift ;;
+      --amd|--rocm)         GPU_VENDOR="amd";    GPU_VENDOR_FORCED=1; shift ;;
+      --lite|--cpu)         GPU_VENDOR="lite";   GPU_VENDOR_FORCED=1; shift ;;
+      --nvidia|--cuda)      GPU_VENDOR="nvidia"; GPU_VENDOR_FORCED=1; shift ;;
       --kubernetes|--helm)  print_kubernetes_help; exit 0 ;;
       -h|--help)            usage; exit 0 ;;
       *)
@@ -350,6 +360,90 @@ check_os() {
 }
 
 # ---------------------------------------------------------------------
+# Edge / small-device detection. MUST run before detect_gpu_vendor.
+#
+# THE BUG THIS FIXES, measured on a Jetson Orin Nano (JetPack 6):
+# `nvidia-smi -L` SUCCEEDS on a Jetson, so vendor detection called it NVIDIA
+# and headed for the 17 GB CUDA container -- on a 7 GB device. It never got
+# that far: the driver reads 540.4.0 against this script's 580.65.06 floor,
+# so preflight FAILED and told the operator to upgrade an NVIDIA driver. On
+# JetPack the driver ships inside L4T and is not upgradable that way, so the
+# advice is impossible to follow.
+#
+# A dead end on hardware Lifeboat serves perfectly well -- the same machine
+# measured 47 tok/s through the pip package. Tegra is checked FIRST because
+# every signal the NVIDIA branch keys on is present and misleading.
+#
+# EDGE_CLASS is advisory: it changes what we RECOMMEND, never what an
+# explicit --nvidia/--amd/--lite does.
+# ---------------------------------------------------------------------
+EDGE_CLASS=""
+EDGE_REASON=""
+
+detect_edge_profile() {
+  local model="" ram_gb=0 cores=0
+  [ -r /proc/device-tree/model ] && model="$(tr -d '\0' < /proc/device-tree/model 2>/dev/null)"
+  ram_gb="$(awk '/MemTotal/{printf "%d", $2/1024/1024}' /proc/meminfo 2>/dev/null || echo 0)"
+  cores="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
+
+  if [ -f /etc/nv_tegra_release ] || printf '%s' "$model" | grep -qiE 'jetson|tegra'; then
+    EDGE_CLASS="jetson"
+    EDGE_REASON="NVIDIA Jetson (${model:-Tegra}), ${ram_gb} GB shared memory"
+    return
+  fi
+  if printf '%s' "$model" | grep -qi 'raspberry pi'; then
+    EDGE_CLASS="pi"
+    EDGE_REASON="${model}, ${ram_gb} GB RAM"
+    return
+  fi
+  # A generic small box: not enough memory for a comfortable container
+  # deployment, and the multi-gigabyte images are the wrong shape for it.
+  if [ "$ram_gb" -gt 0 ] && [ "$ram_gb" -le 8 ] && [ "$cores" -le 8 ]; then
+    EDGE_CLASS="tiny"
+    EDGE_REASON="${ram_gb} GB RAM, ${cores} cores"
+  fi
+}
+
+# Print the pip route and stop. Returns 0 when it handled the install, so the
+# caller can exit cleanly rather than treating an unsuitable host as a
+# failure -- this machine is supported, just not by a container image.
+recommend_edge_path() {
+  [ -n "$EDGE_CLASS" ] || return 1
+  [ -n "$GPU_VENDOR_FORCED" ] && return 1
+
+  log_step "This looks like an edge device"
+  log_ok "Detected: ${EDGE_REASON}"
+  case "$EDGE_CLASS" in
+    jetson)
+      log_hint "Jetson reports an NVIDIA GPU, but the CUDA container image is ~17 GB"
+      log_hint "and targets data-center drivers. JetPack ships its driver inside L4T,"
+      log_hint "so that image is the wrong shape for this board." ;;
+    pi)
+      log_hint "No discrete GPU and limited memory: the container images are far"
+      log_hint "larger than this board needs." ;;
+    tiny)
+      log_hint "Small memory and core count: the pip package is ~80 MB installed"
+      log_hint "against ~720 MB for the smallest container image." ;;
+  esac
+
+  printf '\n%b\n' "${C_BOLD}Install Lifeboat with pip instead:${C_OFF}"
+  cat <<'EOS'
+
+    sudo apt install -y python3-venv        # Debian/Ubuntu/JetPack only
+    python3 -m venv ~/lifeboat && ~/lifeboat/bin/pip install -U pip
+    ~/lifeboat/bin/pip install 'lifeboat[hub]'
+    ~/lifeboat/bin/lifeboat engine install
+    ~/lifeboat/bin/lifeboat up              # console on http://127.0.0.1:8001
+
+EOS
+  log_hint "Needs Python 3.10+. Check what the board can run: lifeboat doctor"
+  log_hint "Sizing and measured throughput: https://docs.iterate.ai/lifeboat/platform/performance/"
+  printf '\n'
+  log_hint "To install a container image here anyway: re-run with --lite"
+  return 0
+}
+
+# ---------------------------------------------------------------------
 # GPU vendor. Lifeboat ships TWO images and TWO compose files, because
 # CUDA and ROCm cannot coexist in one image (torch is built for one or the
 # other) and GPU access works completely differently: CDI devices on
@@ -360,6 +454,15 @@ check_os() {
 # which is present exactly when ROCm can actually run something.
 # ---------------------------------------------------------------------
 detect_gpu_vendor() {
+  # Tegra FIRST. Every NVIDIA signal below is present on a Jetson and all of
+  # them are misleading there.
+  if [ "$EDGE_CLASS" = "jetson" ] && [ -z "$GPU_VENDOR_FORCED" ]; then
+    GPU_VENDOR="lite"
+    log_ok "GPU vendor: NVIDIA Jetson — using the Lite image, not the CUDA image"
+    log_hint "The CUDA image wants a data-center driver; JetPack's lives in L4T."
+    log_hint "Lite offloads to the Orin GPU through Vulkan."
+    return
+  fi
   if [ -n "$GPU_VENDOR" ]; then
     log_ok "GPU vendor: $GPU_VENDOR (forced by flag)"
     return
@@ -793,6 +896,7 @@ check_confidential_computing() {
 run_preflight() {
   log_step "Preflight checks"
   detect_distro
+  detect_edge_profile
   detect_gpu_vendor
   check_os
   check_arch
@@ -1161,6 +1265,15 @@ print_summary() {
 
 main() {
   parse_args "$@"
+
+  # An edge device is offered the pip route BEFORE preflight, because
+  # preflight is where a Jetson used to die on a driver check it can never
+  # satisfy. Returns 0 only when it printed guidance and the operator forced
+  # nothing, in which case there is nothing left for this script to do.
+  detect_edge_profile
+  if recommend_edge_path; then
+    exit 0
+  fi
 
   if ! run_preflight; then
     exit 2
