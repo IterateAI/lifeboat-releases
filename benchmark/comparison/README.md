@@ -121,10 +121,87 @@ would have meant the harness was broken rather than that an engine was fast.
 The ollama row is the one that shows the shape difference: it does not rise at
 all with concurrency, because its default parallelism serializes requests.
 
+## Profile: `default` — the tensor engine, against vLLM
+
+Every table above is the **GGUF engine**: Lifeboat, llama.cpp and ollama all
+running the same kernel, where the only thing being compared is the serving
+layer. vLLM is a different question. It is not an engine Lifeboat embeds — it
+is an alternative to Lifeboat's *tensor* engine, so this is the one comparison
+here where a difference is a real engine difference rather than a defaults
+difference.
+
+### AMD Instinct MI210 (ROCm 7.2), Qwen2.5-0.5B-Instruct bf16
+
+Both servers measured back to back in a single harness run, on the same card,
+same weights, same client, 256-token generations, zero failed requests on
+either side.
+
+| System | Single-stream | Peak | at | TTFT p50 |
+|---|---|---|---|---|
+| **Lifeboat tensor engine 2.2.56** | 544.8 tok/s | **9985.2 tok/s** | c=32 | 20 ms |
+| vLLM (`rocm/vllm:latest`) | **584.7 tok/s** | 7513.4 tok/s | c=32 | **10 ms** |
+
+Level by level, because the single number hides a crossover:
+
+| Concurrency | Lifeboat | vLLM | |
+|---|---|---|---|
+| 1 | 544.8 | **584.7** | vLLM 1.07x |
+| 4 | **1593.6** | 1555.7 | Lifeboat 1.02x |
+| 16 | **5763.4** | 4079.9 | **Lifeboat 1.41x** |
+| 32 | **9985.2** | 7513.4 | **Lifeboat 1.33x** |
+
+**vLLM is ahead on a single request and on time-to-first-token; Lifeboat is
+ahead on throughput from concurrency 4 upward.** Both are true and neither is
+a rounding error. The shape is visible in per-token latency: vLLM starts lower
+and degrades under load (1.68 ms to 4.06 ms across the sweep) while Lifeboat
+starts higher and stays flatter (1.77 ms to 2.96 ms). If you are serving one
+interactive stream, vLLM's lower TTFT is the number that matters. If you are
+serving a fleet, the concurrency columns are.
+
+### This needed a flag that is NOT on by default, and that matters
+
+The row above was measured with **`--enable-torch-compile`**. Without it, on
+the identical box and model:
+
+| Lifeboat tensor engine | Single-stream | Peak |
+|---|---|---|
+| default configuration | 141.4 tok/s | 4626.9 tok/s |
+| with `--enable-torch-compile` | **544.8 tok/s** | **9985.2 tok/s** |
+
+**3.9x single-stream and 2.2x peak, from one flag.** The engine's own log
+agrees with the harness (`gen throughput: 142.81 tok/s` before, ~565 after),
+so this is not a measurement artefact.
+
+It is not on by default because it is not free: decode graph capture goes from
+7.5 s to 116.9 s, so the server takes about two extra minutes to become ready.
+For a process that then runs for days that is a good trade, and we expect to
+make it automatic for small models. It is stated here rather than quietly
+folded into the headline because **a Lifeboat tensor server you start today,
+with no flags, measures 141 tok/s single-stream against vLLM's 584** — and
+publishing only the tuned number would misrepresent what you get out of the
+box.
+
 ## Where Lifeboat is NOT ahead
 
 Publishing only the wins would make everything above worth less, so:
 
+- **vLLM beats our tensor engine on single-stream and TTFT** (above): 7% on
+  throughput for one request, and roughly half the time-to-first-token at every
+  concurrency level. We are ahead from concurrency 4 up, by as much as 1.41x.
+- **Our tensor engine's default configuration is far behind vLLM**, until
+  `--enable-torch-compile` is set — 141 against 584 tok/s single-stream. That
+  is a default we intend to fix, not a hardware limit, and it is published here
+  in the state you would actually meet it.
+- **Lifeboat's default routing mode rejects concurrent requests above 4 per
+  server.** `superfast` is the shipped default: it caps each backend at 4
+  in-flight requests to minimise time-to-first-token, and the waiter queue is
+  off by default, so request 5 gets a 503 rather than waiting. Measured through
+  the load balancer at concurrency 32, exactly 4 requests succeeded per level
+  and 40 of 53 were rejected. That is deliberate behaviour for interactive
+  chat and the wrong default for a throughput benchmark or a busy fleet; set
+  `routing_mode` to `max_concurrency` or `queue_all` on the Configuration page
+  for those. The tensor-engine figures above are measured against the engine
+  directly, so they are unaffected.
 - **On a Mac, Lifeboat and llama.cpp are level** (above). Both are at the
   hardware's bandwidth ceiling; there is nothing left to win.
 - **On a Jetson, llama.cpp's peak is 8% above ours** on defaults, because we
@@ -185,6 +262,11 @@ nobody can trust is worth nothing:
 
 ## Not measured yet
 
-**vLLM and sglang.** Adapters exist in `compare.py` and have not been run —
-both need a Linux host with a working GPU and enough disk, and we do not have
-one free. They are listed as unproven rather than estimated.
+**sglang.** An adapter exists in `compare.py` and has not been run against a
+published sglang build. It is listed as unproven rather than estimated.
+
+**vLLM beyond one card and one small model.** The row above is a single MI210
+and a 0.5B model. A 0.5B is the case most favourable to per-token overhead —
+which is exactly why `--enable-torch-compile` is worth 3.9x there — so do not
+read the ratio as holding at 30B. Larger models and NVIDIA hardware are the
+obvious next runs.
