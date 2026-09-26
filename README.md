@@ -54,6 +54,23 @@ model file, out of the box: **1.94x** llama.cpp on a 64-core server, **2.01x**
 ollama on a Jetson, **1.48x** on a Mac. Harness and raw results:
 [`benchmark/comparison`](benchmark/comparison).
 
+### Android — running, not yet downloadable
+
+The GGUF engine cross-compiles for `arm64-v8a` and runs on a handset, with a
+branded console in the app: it enumerates the phone's compute devices, lets you
+pick one, benchmarks them against each other, and serves the same
+OpenAI-compatible API on the device.
+
+<img src="assets/android-compute.png" alt="The Lifeboat Engine console on an Android phone: a Compute section listing the CPU and the Adreno GPU with measured throughput, a comparison chart, and the engine controls" width="340">
+
+**There is no APK to download yet.** The build is signed with a local
+development key, which is fine for a device you own over `adb` and wrong for
+anything you hand to someone else. What is verified on real hardware is the
+engine, the console and the measurements — see
+[`benchmark/android`](benchmark/android) for the numbers and
+[the Android guide](https://docs.iterate.ai/lifeboat/platform/android-edge/)
+for what the phone build can reach.
+
 ### Desktop — no Docker required
 
 A native app with a tray icon, on all three platforms. No container runtime

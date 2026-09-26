@@ -10,6 +10,18 @@ Raw data in [`result.json`](result.json). Harness: `packaging/android/bench-andr
 | Engine | llama.cpp GGUF engine, `arm64-v8a`, backends dispatched at runtime |
 | Workload | 64 tokens, temperature 0, foreground app, warm-up excluded, **median of 3** |
 
+## Choosing from the numbers, on the device
+
+The console lists every device the engine can reach and measures them against
+each other, because no built-in rule generalises across the Android range.
+"Test & compare" runs the CPU, each accelerator at full offload, and a partial
+CPU/GPU split, then charts them and offers the winner in one tap.
+
+<img src="../../assets/android-compute.png" alt="The Compute section: CPU and Adreno rows with measured throughput, a bar chart comparing CPU, Adreno all-layers and Adreno 16-layers, and a verdict naming the CPU as fastest" width="360">
+
+Both facts in that chart are ones a rule of thumb would get wrong: the CPU wins
+outright, and the *partial* split beats handing the GPU everything.
+
 ## The headline: the GPU is 4.7x SLOWER than the CPU
 
 Qwen2.5-0.5B-Instruct **Q4_0**. Two independent runs, hours apart:
