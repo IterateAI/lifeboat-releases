@@ -1,0 +1,136 @@
+{
+  "meta": {
+    "device": "Samsung SM-M515F (Galaxy M51)",
+    "soc": "Qualcomm Snapdragon 730G (QTI SM7150)",
+    "cpu": "Kryo 470 (2x A76 + 6x A55)",
+    "gpu": "Adreno 618 (A6X)",
+    "android": "12",
+    "engine": "llama.cpp GGUF engine, arm64-v8a, GGML_BACKEND_DL",
+    "opencl_target_version": 200,
+    "harness": "packaging/android/bench-android.sh",
+    "workload": {
+      "prompt": "Name three uses of a load balancer.",
+      "n_predict": 64,
+      "temperature": 0
+    },
+    "method": "run inside the FOREGROUND app; warm-up request excluded; 3 repeats; median reported",
+    "notes": [
+      "-ngl is stated explicitly on BOTH arms; unset does not mean CPU.",
+      "Readiness is the HTTP status of /health, not whether curl ran: the server answers 503 {\"error\":\"Loading model\"} while loading."
+    ]
+  },
+  "runs": [
+    {
+      "model": "Qwen2.5-0.5B-Instruct-Q4_0.gguf",
+      "quant": "Q4_0",
+      "run": 1,
+      "arms": [
+        {
+          "label": "CPU",
+          "ngl": 0,
+          "prefill_tok_s": 86.41,
+          "decode_tok_s": 18.11,
+          "decode_samples": [
+            18.19,
+            17.57,
+            18.11
+          ],
+          "spread_pct": 3
+        },
+        {
+          "label": "GPU",
+          "ngl": 99,
+          "prefill_tok_s": 18.49,
+          "decode_tok_s": 3.88,
+          "decode_samples": [
+            3.88,
+            3.88,
+            3.88
+          ],
+          "spread_pct": 0
+        }
+      ]
+    },
+    {
+      "model": "Qwen2.5-0.5B-Instruct-Q4_0.gguf",
+      "quant": "Q4_0",
+      "run": 2,
+      "arms": [
+        {
+          "label": "CPU",
+          "ngl": 0,
+          "prefill_tok_s": 76.4,
+          "decode_tok_s": 18.0,
+          "decode_samples": [
+            17.54,
+            18.21,
+            18.0
+          ],
+          "spread_pct": 4
+        },
+        {
+          "label": "GPU",
+          "ngl": 99,
+          "prefill_tok_s": 18.65,
+          "decode_tok_s": 3.89,
+          "decode_samples": [
+            3.89,
+            3.88,
+            3.9
+          ],
+          "spread_pct": 1
+        }
+      ]
+    },
+    {
+      "model": "qwen2.5-0.5b-instruct (mixed K-quant, predominantly Q5_0)",
+      "quant": "Q5_0-mixed",
+      "run": 1,
+      "arms": [
+        {
+          "label": "CPU",
+          "ngl": 0,
+          "prefill_tok_s": 35.87,
+          "decode_tok_s": 13.96,
+          "decode_samples": [
+            13.85,
+            14.77,
+            13.96
+          ],
+          "spread_pct": 7
+        },
+        {
+          "label": "GPU",
+          "ngl": 99,
+          "prefill_tok_s": 8.32,
+          "decode_tok_s": 1.29,
+          "decode_samples": [
+            1.32,
+            1.29,
+            1.28
+          ],
+          "spread_pct": 3
+        }
+      ]
+    }
+  ],
+  "default_offload_policy": {
+    "before": {
+      "ngl": 99,
+      "decode_tok_s": 3.91,
+      "note": "app default was -ngl 99"
+    },
+    "after": {
+      "ngl": 0,
+      "decode_tok_s": 17.22,
+      "note": "Bridge.defaultNgl() demotes Adreno 6xx to CPU"
+    },
+    "gain": "4.4x"
+  },
+  "conclusions": [
+    "The Adreno 618 GPU works. Earlier reports of 'no GPU enumerated' were three packaging bugs on our side, not a hardware floor.",
+    "On this part the GPU is 4.7x SLOWER than the CPU for decode; the OpenCL path is tuned for A7X/A8X/X1E/X2E.",
+    "Quantization changes the GPU result by ~3x: Q4_0 3.89 tok/s vs mixed-Q5_0 1.29 tok/s. Always state the quant.",
+    "The Hexagon NPU is unreachable on this device: no /dev/cdsprpc-smd, audio-DSP fastrpc domains only, 0 of 18 skels are HTP/HMX."
+  ]
+}
