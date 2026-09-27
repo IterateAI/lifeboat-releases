@@ -21,6 +21,8 @@ not public.
 
 ---
 
+<img src="assets/console-dashboard.png" alt="The Lifeboat console: counters for running servers, models and GPUs, a GPU Fleet panel showing each node and its accelerator, and the load-balancer pool table with per-server dispatch ratios" width="820">
+
 ## Download
 
 ### pip — no Docker, no GPU required
@@ -336,6 +338,21 @@ switches the image, the device resource and the runtime class together — set i
 to `lite` for CPU-only nodes.
 
 ---
+
+## Downloading a model
+
+Models come from the registry page: **Add Model** takes a HuggingFace repository
+or a local path, and **Download** on a row that is not yet fetched opens the
+variant picker. A multi-quant repository is hundreds of gigabytes if you take
+all of it, so the picker lists every quantization with its size and downloads
+only what you tick.
+
+<img src="assets/console-download-variants.png" alt="The download dialog: a checklist of nine GGUF quantizations with sizes, three ticked, and a running total reading about 1.2 GB" width="720">
+
+Which machines can run which formats is in
+[Supported Devices](https://docs.iterate.ai/lifeboat/platform/supported-devices/);
+a host with no tensor engine is refused a full-precision download in the picker
+itself, with the reason, before the bytes move.
 
 ## First run
 
