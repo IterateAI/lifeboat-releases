@@ -88,13 +88,13 @@ them. Take the newest file for yours:
 
 | Platform | File | Notes |
 |---|---|---|
-| **Windows** 10/11 x64 | `Lifeboat-2.2.51-setup.exe` | signed installer, no admin rights needed |
-| **macOS** Apple Silicon (13+) | `Lifeboat-2.2.50-macos-arm64.dmg` | Metal + MLX |
-| **macOS** Intel (13+) | `Lifeboat-2.2.50-macos-x86_64.dmg` | GGUF, no MLX |
-| **Linux** Debian/Ubuntu x64 | `lifeboat-desktop_2.2.50_amd64.deb` | GPU offload via Vulkan |
-| **Linux** Debian/Ubuntu arm64 | `lifeboat-desktop_2.2.50_arm64.deb` | GPU offload via Vulkan |
-| **Linux** any distro, x64 | `Lifeboat-2.2.50-linux-x86_64.tar.gz` | GPU offload via Vulkan |
-| **Linux** any distro, arm64 | `Lifeboat-2.2.50-linux-aarch64.tar.gz` | GPU offload via Vulkan |
+| **Windows** 10/11 x64 | `Lifeboat-2.2.52-setup.exe` | signed installer, no admin rights needed |
+| **macOS** Apple Silicon (13+) | `Lifeboat-2.2.52-macos-arm64.dmg` | Metal + MLX |
+| **macOS** Intel (13+) | `Lifeboat-2.2.52-macos-x86_64.dmg` | GGUF, no MLX |
+| **Linux** Debian/Ubuntu x64 | `lifeboat-desktop_2.2.52_amd64.deb` | GPU offload via Vulkan |
+| **Linux** Debian/Ubuntu arm64 | `lifeboat-desktop_2.2.52_arm64.deb` | GPU offload via Vulkan |
+| **Linux** any distro, x64 | `Lifeboat-2.2.52-linux-x86_64.tar.gz` | GPU offload via Vulkan |
+| **Linux** any distro, arm64 | `Lifeboat-2.2.52-linux-aarch64.tar.gz` | GPU offload via Vulkan |
 
 Because the platforms are cut separately, the newest build for yours may not
 be on the *latest* release — browse [all releases](../../releases) and take
@@ -140,7 +140,7 @@ not the Dock: there is no Dock icon and no window on launch.
 Debian, Ubuntu and derivatives:
 
 ```sh
-sudo apt install ./lifeboat-desktop_2.2.50_amd64.deb
+sudo apt install ./lifeboat-desktop_2.2.52_amd64.deb
 ```
 
 Use `apt install ./file.deb`, not `dpkg -i` — the tray binding and the Vulkan
@@ -149,7 +149,7 @@ loader are *recommended* packages and `dpkg` will not pull them in.
 Any other distribution — the tarball unpacks to the same layout, rooted at `/`:
 
 ```sh
-sudo tar -C / -xzf Lifeboat-2.2.50-linux-x86_64.tar.gz
+sudo tar -C / -xzf Lifeboat-2.2.52-linux-x86_64.tar.gz
 ```
 
 Either way you get `/opt/lifeboat` plus two commands on `PATH`:
