@@ -130,6 +130,26 @@ is an alternative to Lifeboat's *tensor* engine, so this is the one comparison
 here where a difference is a real engine difference rather than a defaults
 difference.
 
+### 2x NVIDIA RTX PRO 6000 Blackwell, two FP8 models — both out of the box
+
+Lifeboat 2.2.60 with servers created from the console defaults, against vLLM
+0.31.0 from its official image with only a model path and a served name. Same
+GPU per model for both engines, same model files, same client, 256-token
+answers, two runs per level. Full tables, long-prompt results, commands and a
+PDF: [results/rtx-pro-6000-vllm](results/rtx-pro-6000-vllm/report.md).
+
+| Concurrent | Qwen3-30B-A3B: Lifeboat | vLLM | | Qwen3.8-27B: Lifeboat | vLLM | |
+|---|---|---|---|---|---|---|
+| 1 | **427.4** | 165.1 | 2.59x | **125.7** | 47.7 | 2.64x |
+| 4 | **1,557.5** | 528.5 | 2.95x | **408.5** | 172.2 | 2.37x |
+| 16 | **4,168.0** | 1,700.3 | 2.45x | **939.6** | 657.9 | 1.43x |
+| 32 | **8,182.1** | 3,100.2 | 2.64x | **1,253.4** | 1,150.7 | 1.09x |
+| 64 | **7,708.3** | 5,409.8 | 1.42x | 1,232.1 | **1,621.2** | 0.76x |
+
+**vLLM is ahead in two places, and both are stated in the report:** on the 27B
+model at 64 concurrent requests, and on time to first token at every level.
+Lifeboat's time per output token is lower at every level on both models.
+
 ### AMD Instinct MI210 (ROCm 7.2), Qwen2.5-0.5B-Instruct bf16
 
 Both servers measured back to back in a single harness run, on the same card,
@@ -265,8 +285,9 @@ nobody can trust is worth nothing:
 **sglang.** An adapter exists in `compare.py` and has not been run against a
 published sglang build. It is listed as unproven rather than estimated.
 
-**vLLM beyond one card and one small model.** The row above is a single MI210
-and a 0.5B model. A 0.5B is the case most favourable to per-token overhead —
+**vLLM on more hardware.** Measured so far: a single MI210 with a 0.5B model,
+and two RTX PRO 6000 Blackwell GPUs with 27B and 30B FP8 models (above). The MI210
+row is a 0.5B model. A 0.5B is the case most favourable to per-token overhead —
 which is exactly why `--enable-torch-compile` is worth 3.9x there — so do not
 read the ratio as holding at 30B. Larger models and NVIDIA hardware are the
 obvious next runs.

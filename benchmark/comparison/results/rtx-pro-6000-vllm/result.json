@@ -1,0 +1,246 @@
+{
+ "date": "17 October 2026",
+ "lifeboat": "2.2.60",
+ "vllm": "0.31.0",
+ "hardware": {
+  "GPUs": "2x NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition, 96 GB each",
+  "Placement": "one model per GPU, the same GPU for both engines",
+  "NVIDIA driver": "580.173.02",
+  "Host": "24 CPU cores, 123 GB RAM",
+  "Lifeboat": "2.2.60, container image iterateai/lifeboat:2.2.60",
+  "vLLM": "0.31.0, official image vllm/vllm-openai:latest (built 2026-10-03)"
+ },
+ "gpu_hour_usd": 2.33,
+ "levels": [
+  1,
+  4,
+  16,
+  32,
+  64
+ ],
+ "concurrency": {
+  "Qwen3.8-27B-FP8": {
+   "lb": {
+    "tps": [
+     125.7,
+     408.5,
+     939.6,
+     1253.4,
+     1232.1
+    ],
+    "ttft": [
+     85,
+     156,
+     556,
+     949,
+     1530
+    ],
+    "tpot": [
+     7.5,
+     8.2,
+     12.6,
+     19.6,
+     27.6
+    ]
+   },
+   "vllm": {
+    "tps": [
+     47.7,
+     172.2,
+     657.9,
+     1150.7,
+     1621.2
+    ],
+    "ttft": [
+     39,
+     68,
+     151,
+     222,
+     495
+    ],
+    "tpot": [
+     20.9,
+     22.5,
+     23.8,
+     27.0,
+     36.6
+    ]
+   }
+  },
+  "Qwen3-30B-A3B-Instruct-2507-FP8": {
+   "lb": {
+    "tps": [
+     427.4,
+     1557.5,
+     4168.0,
+     8182.1,
+     7708.3
+    ],
+    "ttft": [
+     18,
+     31,
+     83,
+     71,
+     132
+    ],
+    "tpot": [
+     2.3,
+     2.5,
+     3.5,
+     3.7,
+     4.1
+    ]
+   },
+   "vllm": {
+    "tps": [
+     165.1,
+     528.5,
+     1700.3,
+     3100.2,
+     5409.8
+    ],
+    "ttft": [
+     12,
+     22,
+     35,
+     58,
+     84
+    ],
+    "tpot": [
+     6.0,
+     7.5,
+     9.3,
+     10.1,
+     11.5
+    ]
+   }
+  }
+ },
+ "long_prompt_columns": [
+  "prompt",
+  "lifeboat_ttft_s",
+  "lifeboat_answer_s",
+  "vllm_ttft_s",
+  "vllm_answer_s"
+ ],
+ "long_prompt": {
+  "Qwen3.8-27B-FP8": [
+   [
+    "2K",
+    0.63,
+    3.1,
+    0.34,
+    5.7
+   ],
+   [
+    "4K",
+    1.28,
+    3.7,
+    0.6,
+    6.1
+   ],
+   [
+    "8K",
+    2.33,
+    5.0,
+    1.22,
+    6.7
+   ],
+   [
+    "16K",
+    4.74,
+    7.3,
+    2.53,
+    8.1
+   ],
+   [
+    "32K",
+    10.1,
+    12.9,
+    5.6,
+    11.3
+   ],
+   [
+    "64K",
+    23.0,
+    25.7,
+    13.0,
+    19.1
+   ],
+   [
+    "128K",
+    57.3,
+    60.2,
+    33.9,
+    40.8
+   ],
+   [
+    "256K",
+    152.9,
+    156.4,
+    95.3,
+    103.4
+   ]
+  ],
+  "Qwen3-30B-A3B-Instruct-2507-FP8": [
+   [
+    "2K",
+    0.08,
+    1.0,
+    0.07,
+    1.7
+   ],
+   [
+    "4K",
+    0.17,
+    1.5,
+    0.13,
+    1.8
+   ],
+   [
+    "8K",
+    0.38,
+    2.0,
+    0.33,
+    2.0
+   ],
+   [
+    "16K",
+    0.98,
+    2.9,
+    0.9,
+    2.7
+   ],
+   [
+    "32K",
+    2.9,
+    5.1,
+    2.8,
+    4.9
+   ],
+   [
+    "64K",
+    9.5,
+    12.1,
+    9.7,
+    12.4
+   ],
+   [
+    "128K",
+    34.0,
+    38.9,
+    35.7,
+    39.5
+   ],
+   [
+    "256K",
+    121.4,
+    129.9,
+    129.9,
+    135.9
+   ]
+  ]
+ },
+ "vllm_command": "# Qwen3.8-27B-FP8 on GPU 0\ndocker run -d --gpus \"device=0\" --ipc=host -v <models-dir>:/models:ro \\\n  vllm/vllm-openai:latest \\\n  /models/Qwen/Qwen3.8-27B-FP8 --served-model-name interplay-coder\n\n# Qwen3-30B-A3B-Instruct-2507-FP8 on GPU 1\ndocker run -d --gpus \"device=1\" --ipc=host -v <models-dir>:/models:ro \\\n  vllm/vllm-openai:latest \\\n  /models/Qwen/Qwen3-30B-A3B-Instruct-2507-FP8 --served-model-name interplay-coder-a3b",
+ "lifeboat_config": "Lifeboat 2.2.60 with each server created from the console's defaults: the model path and the GPU, and nothing else. Memory, concurrency, routing and speculative decoding were all left on their defaults, which Lifeboat sizes for the GPU it finds."
+}
